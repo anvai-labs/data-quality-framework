@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-09-20
+
+### Added
+
+- Python 3.13 package and Spark integration coverage
+- Versioned, dataset-bound `dq-report/v1` execution evidence
+
+### Changed
+
+- Supported Python range is now 3.12 through 3.13; Python 3.10 and 3.11 are no
+  longer supported
+- Empty rules, missing configured DataFrames, empty engine outcomes, and
+  ambiguous success values now fail closed
+
 ## [2.0.0] - 2025-02-03
 
 ### Added

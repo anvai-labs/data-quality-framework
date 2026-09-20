@@ -185,7 +185,7 @@ Place your engine in `dq/engine/mycustom/mycustom_engine.py` and reference it in
 
 ## Requirements
 
-- Python 3.10 through 3.12 (the tested source and CI matrix)
+- Python 3.12 and 3.13 (the tested source and CI matrix)
 - Apache Spark 3.5.9
 - Deequ JAR file (for Deequ engine): `lib/deequ-2.0.8-spark-3.5.jar`
 
@@ -218,7 +218,7 @@ bandit -r dq/ -x tests
 The remaining documents under `docs/` are explicitly labeled planning records. They describe
 possible future work and are not statements about implemented behavior.
 
-CI runs the Spark-backed suite on Python 3.10, 3.11, and 3.12; enforces independent 55% line and
+CI runs the Spark-backed suite on Python 3.12 and 3.13; enforces independent 55% line and
 branch floors plus changed-code coverage; audits dependencies; builds the package; and rejects
 broken documentation links.
 
