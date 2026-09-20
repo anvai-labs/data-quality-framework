@@ -240,6 +240,9 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   no passing certification is inferred from local tests. CI test steps now have a
   ten-minute budget, slow tests dump Python stacks after sixty seconds, and import
   subprocesses have a thirty-second timeout. These diagnostics do not assert a root cause.
+  Collection inspection found a generated test ID of 1,048,642 characters from a large
+  string fixture. Explicit short IDs prevent this fixture from flooding verbose CI logs;
+  local quiet output had hidden that problem. Retry certification is still required.
 * U3b: planned: typed dataset/rule/metric identities, execution plans, capability contracts,
   and adapter-specific semantic equivalence. U3a is a compatibility boundary, not the full
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report

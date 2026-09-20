@@ -70,6 +70,7 @@ def test_cyclic_or_deep_diagnostics_are_bounded():
 @pytest.mark.parametrize(
     "details, message",
     [(list(range(10_001)), "nodes"), ("x" * 1_048_576, "bytes")],
+    ids=["node-limit", "byte-limit"],
 )
 def test_diagnostic_size_is_bounded(details, message):
     with pytest.raises(ValidationError, match=message):
