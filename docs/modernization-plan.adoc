@@ -218,7 +218,7 @@ raising the repository-wide percentage is not a substitute for boundary and nega
 == Current delivery status
 
 * U1: merged in PR 32; post-merge CI passed on Python 3.12 and 3.13.
-* U2: implemented in https://github.com/anvai-labs/data-quality-framework/pull/33[PR 33].
+* U2: implemented in PR 33: https://github.com/anvai-labs/data-quality-framework/pull/33
   Lazy package imports, metadata versioning, example structure
   validation, and PyDeequ 1.7/Deequ 2.0.21 compatibility are grouped in one reviewable unit.
   DQDL uses an explicit parser dependency and bounded fail-closed summaries. Full runtime

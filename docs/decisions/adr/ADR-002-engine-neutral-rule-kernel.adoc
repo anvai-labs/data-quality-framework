@@ -164,8 +164,8 @@ engine, or expression evaluator. Those remain delegated to mature runtimes.
 
 == Primary references
 
-* https://github.com/awslabs/deequ[Deequ analyzers and Spark execution]
-* https://github.com/awslabs/python-deequ/releases/tag/v1.7.0[PyDeequ 1.7 changes]
-* https://docs.greatexpectations.io/docs/core/introduction/[Great Expectations validation concepts]
-* https://arrow.apache.org/docs/format/Columnar.html[Arrow memory and interchange format]
-* https://datafusion.apache.org/user-guide/introduction.html[DataFusion query engine and Arrow integration]
+* Deequ analyzers and Spark execution: https://github.com/awslabs/deequ
+* PyDeequ 1.7 changes: https://github.com/awslabs/python-deequ/releases/tag/v1.7.0
+* Great Expectations validation concepts: https://docs.greatexpectations.io/docs/core/introduction/
+* Arrow memory and interchange format: https://arrow.apache.org/docs/format/Columnar.html
+* DataFusion query engine and Arrow integration: https://datafusion.apache.org/user-guide/introduction.html
