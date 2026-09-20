@@ -42,11 +42,21 @@ poetry install -E spark -E deequ -E aws
 ## Quick Start
 
 ```python
+import os
+
+os.environ["SPARK_VERSION"] = "3.5"  # Set before importing PyDeequ-backed engines.
+
 from pyspark.sql import SparkSession
+import pydeequ
 from dq.dq_framework import DQFramework
 
-# Create Spark session
-spark = SparkSession.builder.appName("dq-example").getOrCreate()
+# Resolve the matching Deequ runtime and its dependencies before creating Spark.
+spark = (
+    SparkSession.builder.appName("dq-example")
+    .config("spark.jars.packages", pydeequ.deequ_maven_coord)
+    .config("spark.jars.excludes", pydeequ.f2j_maven_coord)
+    .getOrCreate()
+)
 
 # Define validation rules in HOCON format
 config = """
