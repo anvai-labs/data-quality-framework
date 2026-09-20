@@ -135,7 +135,7 @@ class CustomEngine(DQEngine):
                 {
                     "check": check["name"],
                     "success": check["value"] == 1,
-                    "details": check,
+                    "details": check.asDict(recursive=True),
                 }
             )
 

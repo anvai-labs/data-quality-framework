@@ -78,6 +78,7 @@ quiet = true                    # Reduce output
 
 [tool.pytest.ini_options]
 minversion = "7.0"
+faulthandler_timeout = 60
 testpaths = ["dq/tests"]
 addopts = "-v --tb=short --no-header --no-summary -q"
 markers = [

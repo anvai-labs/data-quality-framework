@@ -94,3 +94,37 @@ def test_injected_default_takes_precedence_over_configured_default_reference():
 
     assert loaded == {"default": injected, "bars": bars}
     framework._resolve_dataframe.assert_called_once_with("bars", "market.bars")
+
+
+def test_framework_does_not_mutate_engine_owned_outcomes():
+    framework = framework_with_rules([{"engine": "deequ"}])
+    original = {"check": "complete", "success": True, "details": {"count": 1}}
+    engine = MagicMock()
+    engine.apply.return_value = [original]
+    with patch("dq.dq_framework.EngineLoader") as loader:
+        loader.return_value.load_engine.return_value = engine
+        results = framework.run()
+    results[0]["details"]["count"] = 2
+    assert original == {"check": "complete", "success": True, "details": {"count": 1}}
+
+
+def test_framework_rejects_nonfinite_metrics_even_on_success():
+    framework = framework_with_rules([{"engine": "deequ"}])
+    engine = MagicMock()
+    engine.apply.return_value = [{"success": True, "details": float("nan")}]
+    with patch("dq.dq_framework.EngineLoader") as loader:
+        loader.return_value.load_engine.return_value = engine
+        with pytest.raises(ValidationError, match="finite"):
+            framework.run()
+
+
+@pytest.mark.parametrize("limit", ["MAX_OUTCOMES", "MAX_BATCH_BYTES"])
+def test_framework_bounds_cumulative_results_across_rules(monkeypatch, limit):
+    framework = framework_with_rules([{"engine": "deequ"}, {"engine": "deequ"}])
+    engine = MagicMock()
+    engine.apply.return_value = [{"success": True}]
+    monkeypatch.setattr("dq.dq_framework." + limit, 1)
+    with patch("dq.dq_framework.EngineLoader") as loader:
+        loader.return_value.load_engine.return_value = engine
+        with pytest.raises(ValidationError, match="summary limits"):
+            framework.run()

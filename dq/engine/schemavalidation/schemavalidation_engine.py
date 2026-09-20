@@ -65,7 +65,7 @@ class SchemavalidationEngine(DeequEngine):
                 {
                     "check": check["check"],
                     "success": check["check_status"] == "Success",
-                    "details": check,
+                    "details": check.asDict(recursive=True),
                 }
             )
         return summarymetrics

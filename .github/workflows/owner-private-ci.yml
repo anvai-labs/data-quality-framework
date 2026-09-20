@@ -151,6 +151,7 @@ jobs:
             https://repo1.maven.org/maven2/software/amazon/glue/dqdl/1.0.0/dqdl-1.0.0.jar
 
       - name: Run tests
+        timeout-minutes: 10
         run: >-
           poetry run pytest dq/tests/ -v --tb=short
           --cov=dq --cov-branch --cov-report=term-missing

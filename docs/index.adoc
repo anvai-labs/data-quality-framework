@@ -148,6 +148,16 @@ SparkSession.builder \
     .getOrCreate()
 ----
 
+=== Outcome contract
+
+The facade and evidence reporter use an immutable `CheckOutcome` compatibility
+boundary. Summaries require Boolean success and finite, strict JSON diagnostics;
+Spark summary Rows export named fields. Exports are independent copies. The
+boundary rejects more than 10,000 outcomes, 1 MiB per outcome, 16 MiB per batch/run,
+10,000 diagnostic nodes per outcome, or depth 16. It does not truncate evidence
+or bound upstream dataset collection. Portable rule planning and post-validation
+persistence remain separate units in the modernization plan.
+
 === DQDL compatibility
 
 PyDeequ 1.7 adds Deequ Data Quality Definition Language support. The `dqdl` engine accepts a

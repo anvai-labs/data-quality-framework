@@ -45,6 +45,7 @@ jobs:
             https://repo1.maven.org/maven2/software/amazon/glue/dqdl/1.0.0/dqdl-1.0.0.jar \
             --output lib/dqdl-1.0.0.jar
       - name: Test and enforce coverage
+        timeout-minutes: 10
         run: |
           poetry run pytest dq/tests/ -v --tb=short \
             --cov=dq --cov-branch --cov-report=term-missing \

@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from dq.exceptions import ConfigurationError, ValidationError
+from dq.outcomes import CheckOutcome, normalize_outcomes
 
 REPORT_SCHEMA_VERSION = "dq-report/v1"
 
@@ -61,7 +62,7 @@ def validate_sha256(value: str, label: str) -> str:
 
 def build_report(
     *,
-    results: list[dict],
+    results: list[dict | CheckOutcome],
     config_reference: str,
     config_sha256: str,
     dataset_id: str,
@@ -71,23 +72,9 @@ def build_report(
     generated_at: datetime | None = None,
 ) -> dict:
     """Build a schema-versioned report and fail on ambiguous outcomes."""
-    if not results:
-        raise ValidationError("Validation emitted zero check outcomes")
-
-    normalized_results = []
-    for index, result in enumerate(results):
-        if "success" not in result or not isinstance(result["success"], bool):
-            raise ValidationError(
-                f"Check outcome {index} is missing a boolean 'success' field"
-            )
-        # JSON round-trip rejects unserializable engine output instead of
-        # silently stringifying it into a misleading evidence record.
-        try:
-            normalized_results.append(json.loads(json.dumps(result)))
-        except (TypeError, ValueError) as error:
-            raise ValidationError(
-                f"Check outcome {index} is not JSON serializable: {error}"
-            ) from error
+    normalized_results = [
+        outcome.to_legacy() for outcome in normalize_outcomes(results)
+    ]
 
     normalized_config_sha = validate_sha256(config_sha256, "config_sha256")
     normalized_dataset_sha = validate_sha256(dataset_sha256, "dataset_sha256")

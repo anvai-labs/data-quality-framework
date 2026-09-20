@@ -4,7 +4,6 @@
 """Main orchestrator for the Data Quality Framework."""
 
 import logging
-import json
 import re
 import time
 from collections import defaultdict
@@ -16,6 +15,7 @@ from dq.engine.engine_loader import EngineLoader
 from dq.utils import config_utils, constants
 from dq.catalog.catalog_factory import CatalogFactory
 from dq.exceptions import ConfigurationError, DataFrameNotFoundError, ValidationError
+from dq.outcomes import MAX_BATCH_BYTES, MAX_OUTCOMES, CheckOutcome, normalize_outcomes
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +193,7 @@ class DQFramework:
         """
         current_time_in_millis = time.time_ns() // 1_000_000
         cumulative_metrics = []
+        cumulative_bytes = 0
 
         rule_configs = self._config.get("dqframework.dqrules", [])
         if not rule_configs:
@@ -216,22 +217,23 @@ class DQFramework:
                 summary_metrics = engine.apply(
                     dataframe, repository=self._config.get("dqframework.repository", {})
                 )
-                if not summary_metrics:
-                    raise ValidationError(
-                        f"Rule {rule_index} emitted zero outcomes for DataFrame "
-                        f"'{df_name}'"
-                    )
-                for metric in summary_metrics:
-                    success = metric.get(constants.DQ_METRICS_RESULT_SUCCESS_KEY)
-                    if not isinstance(success, bool):
-                        raise ValidationError(
-                            f"Rule {rule_index} emitted an outcome without a boolean "
-                            f"'{constants.DQ_METRICS_RESULT_SUCCESS_KEY}' field"
-                        )
+                for outcome in normalize_outcomes(summary_metrics):
+                    metric = outcome.to_legacy()
                     metric["ts"] = current_time_in_millis
                     metric["jobid"] = self._spark.sparkContext.applicationId
-                    if not success:
-                        logger.warning("Check failed: %s", json.dumps(metric))
+                    enriched = CheckOutcome.from_legacy(metric)
+                    cumulative_bytes += enriched.serialized_size
+                    if (
+                        len(cumulative_metrics) >= MAX_OUTCOMES
+                        or cumulative_bytes > MAX_BATCH_BYTES
+                    ):
+                        raise ValidationError(
+                            "Execution outcomes exceed summary limits"
+                        )
+                    if not outcome.success:
+                        logger.warning(
+                            "Check failed: %s", metric.get("check", "unnamed")
+                        )
                     cumulative_metrics.append(metric)
 
         return cumulative_metrics

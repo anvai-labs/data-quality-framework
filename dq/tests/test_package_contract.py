@@ -41,6 +41,7 @@ builtins.__import__ = guarded_import
         capture_output=True,
         text=True,
         check=False,
+        timeout=30,
     )
 
 
