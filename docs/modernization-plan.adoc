@@ -235,6 +235,11 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   cover malformed and non-finite results, immutable copies, optional-free imports, and limits.
   Local validation: 238 full-suite tests passed; the new outcome module has 100% line and
   branch coverage. Overall line coverage is 71.88% and branch coverage is 65.17%.
+  PR 34: https://github.com/anvai-labs/data-quality-framework/pull/34
+  The first hosted matrix exceeded its prior runtime and cancellation was requested;
+  no passing certification is inferred from local tests. CI test steps now have a
+  ten-minute budget, slow tests dump Python stacks after sixty seconds, and import
+  subprocesses have a thirty-second timeout. These diagnostics do not assert a root cause.
 * U3b: planned: typed dataset/rule/metric identities, execution plans, capability contracts,
   and adapter-specific semantic equivalence. U3a is a compatibility boundary, not the full
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report

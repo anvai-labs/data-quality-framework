@@ -105,7 +105,7 @@ sys.meta_path.insert(0, BlockEngines())
 from dq.outcomes import CheckOutcome
 assert CheckOutcome({'success': True}).success
 """
-    subprocess.run([sys.executable, "-c", code], check=True)
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=30)
 
 
 def test_batch_total_bytes_are_bounded(monkeypatch):
