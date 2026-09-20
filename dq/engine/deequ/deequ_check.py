@@ -6,7 +6,8 @@ from pydeequ.checks import Check, CheckLevel, ConstrainableDataTypes
 from pyhocon import ConfigTree
 from pydeequ.verification import VerificationSuite
 import json
-import ast
+
+from dq.engine.deequ.expression import parse_assertion
 
 
 class DeequCheck:
@@ -21,23 +22,6 @@ class DeequCheck:
     def __init__(self, checks_config: ConfigTree, single_check_mode=False):
         self._checks_config = checks_config
         self._single_check_mode = single_check_mode
-
-    def safe_eval_lambda(self, lambda_expr):
-        """
-        Safely evaluates a lambda function from a string.
-
-        :param lambda_str: The string representing the lambda function.
-        :return: A lambda function object.
-        """
-        try:
-            # Ensure the lambda_str is safe and evaluates to a lambda
-            parsed_expr = ast.parse(lambda_expr, mode="eval")
-            if not isinstance(parsed_expr.body, ast.Lambda):
-                raise ValueError("Provided expression is not a lambda function.")
-            # Evaluate the lambda safely
-            return eval(lambda_expr, {"__builtins__": {}})
-        except Exception as e:
-            raise ValueError(f"Error evaluating lambda: {e}")
 
     def apply_checks(
         self, verification_run_builder: VerificationSuite, spark_session: SparkSession
@@ -77,7 +61,7 @@ class DeequCheck:
 
             method = getattr(check, constraint)
             if assertion:
-                assertion_func = self.safe_eval_lambda(assertion)
+                assertion_func = parse_assertion(assertion)
             else:
                 assertion_func = None
 
@@ -96,7 +80,6 @@ class DeequCheck:
 
                 elif assertion:
                     # Safely evaluate the assertion (e.g., lambda)
-                    assertion_func = self.safe_eval_lambda(assertion)
                     if column or columns:
                         if kwargs:
                             constrainedCheck = method(

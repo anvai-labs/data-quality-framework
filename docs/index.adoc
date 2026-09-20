@@ -30,6 +30,11 @@ compatible version explicitly before selecting that engine.
 
 image::framework-overview.png[Framework components]
 
+The active architecture assessment, debt ledger, and bounded delivery sequence are in
+link:modernization-plan.adoc[Architecture Modernization Plan]. The governing incremental
+design decision is
+link:decisions/adr/ADR-001-incremental-typed-execution-kernel.adoc[ADR-001].
+
 The implemented execution path is:
 
 . `DQFramework` parses a HOCON string or supported URI.
@@ -215,6 +220,8 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 == Examples and planning records
 
 * link:../examples/README.md[Runnable configuration examples]
+* link:modernization-plan.adoc[Active architecture modernization plan]
+* link:decisions/adr/ADR-001-incremental-typed-execution-kernel.adoc[ADR-001: typed execution kernel]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]

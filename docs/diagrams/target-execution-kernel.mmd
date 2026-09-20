@@ -1,0 +1,17 @@
+flowchart LR
+    C[Rule-set bytes] --> F[Stable facade]
+    D[Dataset identity] --> F
+    F --> P[Immutable execution plan]
+    P --> R[DataFrame resolver]
+    P --> E[Engine registry]
+    R --> X[Spark executor]
+    E --> X
+    X --> O[Typed check outcomes]
+    O --> A[v2 dictionary adapter]
+    O --> S[Evidence and storage sinks]
+
+    classDef boundary fill:#e8f0fe,stroke:#315ea8,color:#12233f
+    classDef domain fill:#e8f5e9,stroke:#2e7d32,color:#173d19
+    classDef adapter fill:#fff3e0,stroke:#b26a00,color:#4f3000
+    class C,D,F,A,S adapter
+    class P,R,E,X,O domain

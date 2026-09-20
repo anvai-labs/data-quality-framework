@@ -1,0 +1,62 @@
+= ADR-001: Incremental typed execution kernel behind the stable facade
+:toc: left
+:sectlinks:
+
+* Status: Accepted
+* Date: 2026-09-20
+
+== Context
+
+The framework's useful public surface is small, but its internal boundaries are implicit.
+HOCON trees and mutable outcome dictionaries cross every layer. Engines also persist their
+own outputs, catalog identifiers are validated unevenly, and custom checks sometimes collect
+dataset-scale rows to the Python driver.
+
+A wholesale rewrite would make behavioral drift difficult to detect and would force Spark,
+catalog, persistence, and compatibility changes into the same release.
+
+== Decision
+
+Retain `DQFramework`, `dq-framework`, and `dq-validate` as compatibility facades. Evolve a
+typed modular kernel behind them using an incremental replacement pattern:
+
+* Configuration sources produce an immutable execution plan before Spark work begins.
+* Dataset resolution, engine creation, execution, and outcome persistence are separate ports.
+* Built-in engines use an explicit registry. Third-party discovery, if added, uses package
+  entry points and never imports a module path supplied directly by configuration.
+* Engines return a frozen outcome model. A single adapter preserves the v2 dictionary API.
+* Only bounded summaries may cross from Spark to the Python driver.
+* Configuration expressions use a deliberately restricted interpreter, not Python evaluation.
+* Every boundary fails closed with framework-specific exceptions and preserves the original
+  exception as its cause.
+
+The framework remains a modular monolith. These ports are Python interfaces, not network
+services.
+
+== Consequences
+
+Positive consequences:
+
+* Security and validation policy become centralized and independently testable.
+* Spark-heavy tests are reserved for distributed behavior; orchestration can use fakes.
+* Engine and catalog extensions have explicit compatibility contracts.
+* Evidence serialization has one source of truth.
+* Performance work can prove that raw row cardinality does not escape Spark.
+
+Costs and constraints:
+
+* The v2 dictionary adapter must remain until a versioned public migration is complete.
+* For a transition period, old and new seams coexist behind the facade.
+* Explicit registries require deliberate engine registration instead of naming magic.
+* Additional small types are justified only at trust or ownership boundaries; internal Spark
+  transformations should continue to use native DataFrames and columns.
+
+== Rejected alternatives
+
+* *Rewrite the framework:* too much compatibility and execution risk in one change.
+* *Split into microservices:* adds operational failure modes without improving the local
+  validation domain.
+* *Keep dictionaries and add more validation calls:* retains duplicated interpretation and
+  mutation across layers.
+* *Permit arbitrary Python expressions in trusted deployments:* rule provenance can change;
+  executable configuration violates the evidence boundary even on an internal network.

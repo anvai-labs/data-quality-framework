@@ -8,11 +8,26 @@ from pydeequ.verification import VerificationResult, VerificationSuite
 from pydeequ.suggestions import *
 from pyspark.sql import functions as F, SparkSession
 
+from dq.engine.deequ.expression import apply_constraint_suggestion
+
 logger = logging.getLogger(__name__)
 
 
 class DeequConstraintsBuilder:
     """Generates and runs Deequ constraint suggestions for a DataFrame."""
+
+    @staticmethod
+    def apply_suggestions(check, constraint_suggestions):
+        """Apply generated suggestions through the restricted DSL adapter."""
+        for suggestion in constraint_suggestions:
+            try:
+                expression = suggestion["code_for_constraint"]
+            except (KeyError, TypeError) as error:
+                raise ValueError(
+                    "Constraint suggestion is missing code_for_constraint"
+                ) from error
+            check = apply_constraint_suggestion(check, expression)
+        return check
 
     def build_constraints(self, spark, df):
         """Generate suggested data quality constraints for a DataFrame.
@@ -125,29 +140,15 @@ class DeequConstraintsBuilder:
             logger.debug("Rule description: '%s'", suggestion["rule_description"])
             logger.debug("Python code: `%s`", suggestion["code_for_constraint"])
 
-        pydeequ_validation_string = ""
-
-        for suggestion in constraints["constraint_suggestions"]:
-            pydeequ_validation_string = (
-                pydeequ_validation_string + suggestion["code_for_constraint"]
-            )
-
-        logger.debug("Validation string: %s", pydeequ_validation_string)
-
         check = Check(
             spark_session=spark,
             level=CheckLevel.Warning,
             description="Data Quality Check",
         )
 
-        pydeequ_validation_string_to_check = "check" + pydeequ_validation_string
+        check = self.apply_suggestions(check, constraints["constraint_suggestions"])
 
-        checked_constraints = (
-            VerificationSuite(spark)
-            .onData(df)
-            .addCheck(eval(pydeequ_validation_string_to_check))
-            .run()
-        )
+        checked_constraints = VerificationSuite(spark).onData(df).addCheck(check).run()
 
         df_checked_constraints = VerificationResult.checkResultsAsDataFrame(
             spark, checked_constraints
