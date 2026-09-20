@@ -24,11 +24,10 @@ Official references:
 == Runtime boundary
 
 Databricks Runtime 18 LTS uses Apache Spark 4.1, JDK 21, and Python 3.12.
-This project's current PyDeequ 1.6.0 dependency maps Deequ artifacts only
-through Spark 3.5. CI therefore verifies PySpark 3.5.9 with Java 11 and does not
-claim Runtime 18 compatibility. A Spark 4.1 lane should be added only after an
-upstream PyDeequ release maps and tests Spark 4.1; the current boundary is an
-explicit compatibility hold, not an untested upgrade.
+PyDeequ 1.7.0 maps both Spark 3.5 and Spark 4.1 artifacts. This project still verifies
+PySpark 3.5.9 with Deequ 2.0.21 and Java 17 only, and therefore does not claim Runtime 18
+compatibility. A Spark 4.1/JDK 21 lane must prove adapter and semantic parity before that
+runtime becomes supported; an upstream coordinate alone is not sufficient.
 
 * Databricks Runtime 18 LTS: https://docs.databricks.com/aws/en/release-notes/runtime/18
-* PyDeequ 1.6.0 Spark mapping: https://github.com/awslabs/python-deequ/blob/v1.6.0/pydeequ/configs.py
+* PyDeequ 1.7.0 Spark mapping: https://github.com/awslabs/python-deequ/blob/v1.7.0/pydeequ/configs.py

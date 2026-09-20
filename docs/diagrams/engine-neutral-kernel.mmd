@@ -1,0 +1,22 @@
+flowchart LR
+    CFG[HOCON / typed rules] --> PARSE[Validated parser]
+    PARSE --> IR[Immutable rule + metric IR]
+    IR --> PLAN[Capability-aware planner]
+
+    PLAN --> DEQ[PyDeequ adapter]
+    PLAN --> SPK[Native Spark adapter]
+    PLAN --> DF[Arrow / DataFusion adapter]
+    PLAN --> GX[Great Expectations adapter]
+
+    DEQ --> OUT[Typed bounded outcomes]
+    SPK --> OUT
+    DF --> OUT
+    GX --> OUT
+    OUT --> EVID[Evidence / sinks]
+
+    classDef owned fill:#e8f4ff,stroke:#1b6ca8,stroke-width:2px,color:#102a43
+    classDef adapter fill:#fff4d6,stroke:#ad7b00,stroke-width:2px,color:#3d2c00
+    classDef result fill:#e9f8ee,stroke:#238636,stroke-width:2px,color:#12351b
+    class PARSE,IR,PLAN owned
+    class DEQ,SPK,DF,GX adapter
+    class OUT,EVID result

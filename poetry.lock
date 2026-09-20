@@ -1652,23 +1652,23 @@ files = [
 
 [[package]]
 name = "pydeequ"
-version = "1.6.0"
+version = "1.7.0"
 description = "PyDeequ - Unit Tests for Data"
 optional = true
 python-versions = "<4,>=3.9"
 groups = ["main"]
 markers = "extra == \"deequ\""
 files = [
-    {file = "pydeequ-1.6.0-py3-none-any.whl", hash = "sha256:45e2405357c321994d4163d96f05e2f81f15699efab3595139111970790ee273"},
-    {file = "pydeequ-1.6.0.tar.gz", hash = "sha256:059773f2e3b7329f0a23e58548b24fbb7ca2f6b5c73b1032abb0f21129f72148"},
+    {file = "pydeequ-1.7.0-py3-none-any.whl", hash = "sha256:022ef4f75bdd1a1d1089df6881c44011aa5340f10dd1c326871cece6b7f0923c"},
+    {file = "pydeequ-1.7.0.tar.gz", hash = "sha256:ce9f8f9dc2dc8fc3c585ef3facc6cddcf3bd883849ac1bb065d75d10c6dba479"},
 ]
 
 [package.dependencies]
-numpy = ">=1.14.1"
-pandas = ">=0.23.0"
+numpy = {version = ">=1.22", markers = "python_version >= \"3.10\""}
+pandas = {version = ">=2.2", markers = "python_version >= \"3.10\""}
 
 [package.extras]
-pyspark = ["pyspark (>=2.4.7,<4.0.0)"]
+pyspark = ["pyspark (>=3.5,<4.0.dev0 || ==4.1.*)"]
 
 [[package]]
 name = "pyflakes"
@@ -2193,4 +2193,4 @@ spark = ["pyspark"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.14"
-content-hash = "a5cad3bc8a70a170c93c1e19ec39af46857430ed4674951c207a48113821ce36"
+content-hash = "5cbcf21f4d9a965cef31f4f307e07dedb0ae3ecb0d2fff38b604ee257699a596"

@@ -137,6 +137,12 @@ supported engine capability.
 tests repeat manual success loops and diagnostic printing.
 |Constraint strategy objects, shared outcome assertions/fixtures, and focused unit versus
 Spark integration markers.
+
+|TD-ARCH-10
+|P1
+|PyDeequ types leak into shared constants, assertions, schema checks, and repository helpers.
+|ADR-002: own typed rule/metric semantics, introduce a native Spark parity subset, then an
+Arrow/DataFusion adapter. Retain vendor adapters for rules that cannot be translated faithfully.
 |===
 
 == Target architecture
@@ -153,6 +159,12 @@ facade delegates to five narrow seams:
 
 This is a modular monolith. Network services, queues, and a plugin marketplace are not
 required to obtain these boundaries.
+
+The proposed engine-neutral rule and metric intermediate representation is documented in
+link:decisions/adr/ADR-002-engine-neutral-rule-kernel.adoc[ADR-002]. It replaces PyDeequ
+concepts at the domain boundary while retaining PyDeequ, native Spark, Great Expectations,
+and Arrow/DataFusion as capability-checked execution adapters. It does not create another
+DataFrame runtime.
 
 == Bounded delivery sequence
 
@@ -202,6 +214,23 @@ is explicit.
 
 Each unit must land independently green. Coverage should ratchet around changed domain code;
 raising the repository-wide percentage is not a substitute for boundary and negative tests.
+
+== Current delivery status
+
+* U1: merged in PR 32; post-merge CI passed on Python 3.12 and 3.13.
+* U2: implementation in progress. Lazy package imports, metadata versioning, example structure
+  validation, and PyDeequ 1.7/Deequ 2.0.21 compatibility are grouped in one reviewable unit.
+  DQDL uses an explicit parser dependency and bounded fail-closed summaries. Full runtime
+  execution of every catalog-backed example remains U7.
+* U3-U7: planned. ADR-002 extends U3 with portable rule/metric models; native Spark parity and
+  Arrow/DataFusion follow as separate changes after the core contract lands. No backend migration
+  is enabled by this dependency upgrade.
+
+Upgrade decision: keep Spark 3.5.9, move the wrapper and JVM artifact together, and test with
+Java 17. Spark 4.1 is now mapped upstream but needs a separate framework parity lane. DQDL,
+row-level quarantine, metric history/anomaly checks, and approximation support are independent
+capabilities; upstream availability does not imply framework support. Row-level quarantine and
+metric history remain planned.
 
 == Explicit non-goals
 

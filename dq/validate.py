@@ -13,6 +13,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_BUILT_IN_PAYLOAD_KEYS = {
+    "custom": "checks",
+    "deequ": "checks",
+    "dqdl": "ruleset",
+    "greatexpectations": "expectations",
+    "schemavalidation": "schema",
+}
+
 
 def is_local_config_reference(config_path: str) -> bool:
     """Return whether a configuration can be validated without Spark or I/O."""
@@ -65,12 +73,24 @@ def validate_config(config_path: str) -> bool:
             return False
 
         for i, rule in enumerate(dqrules):
-            if not rule.get("engine"):
+            engine = rule.get("engine", None)
+            if not engine:
                 logger.error(f"Rule {i}: Missing required key 'engine'")
                 return False
-            if not rule.get("checks"):
-                logger.error(f"Rule {i}: No checks defined")
+            payload_key = _BUILT_IN_PAYLOAD_KEYS.get(str(engine).lower())
+            if payload_key and not rule.get(payload_key):
+                logger.error(
+                    "Rule %s: Engine '%s' requires a non-empty '%s' payload",
+                    i,
+                    engine,
+                    payload_key,
+                )
                 return False
+            if payload_key == "ruleset":
+                ruleset = rule.get(payload_key)
+                if not isinstance(ruleset, str) or not ruleset.strip():
+                    logger.error("Rule %s: DQDL ruleset must be a non-empty string", i)
+                    return False
 
         logger.info("Configuration is valid")
         return True

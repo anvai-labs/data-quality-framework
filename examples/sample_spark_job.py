@@ -17,7 +17,7 @@ def main():
     spark = SparkSession.builder \
         .master("local[*]") \
         .appName("dq-framework-example") \
-        .config("spark.jars", "lib/deequ-2.0.8-spark-3.5.jar") \
+        .config("spark.jars", "lib/deequ-2.0.21-spark-3.5.jar") \
         .getOrCreate()
 
     # Create sample data

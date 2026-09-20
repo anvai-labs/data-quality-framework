@@ -1,7 +1,6 @@
 # Copyright 2024 Data Quality Framework Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import pydeequ
 import pytest
 import os
 import sys
@@ -10,16 +9,17 @@ from pyhocon import ConfigFactory
 os.environ["SPARK_VERSION"] = "3.5"
 os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+import pydeequ
 from pyspark.sql import SparkSession
 
 
 @pytest.fixture(scope="session")
 def spark():
-    path_list = "lib/deequ-2.0.8-spark-3.5.jar".split("/")
+    jars = "lib/deequ-2.0.21-spark-3.5.jar,lib/dqdl-1.0.0.jar"
     spark = (
         SparkSession.builder.master("local")
         .appName("test-dqframework")
-        .config("spark.jars", os.path.join(*path_list))
+        .config("spark.jars", jars)
         .config("spark.jars.excludes", pydeequ.f2j_maven_coord)
         .getOrCreate()
     )
