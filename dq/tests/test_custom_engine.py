@@ -283,6 +283,7 @@ def multi_column_dataframe_rate_of_change(spark):
 def test_distinct_groupby_constraint(spark, custom_config, sample_dataframe_group):
     custom_engine = CustomEngine(custom_config)
     results = custom_engine.apply(sample_dataframe_group, None)
+    assert all(isinstance(metric["details"], dict) for metric in results)
     # results.show()
     print(len(results))
     overallsuccess = True

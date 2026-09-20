@@ -41,6 +41,7 @@ def framework_config():
 def test_framework_success(spark, sample_dataframe_with_success, framework_config):
     dqf = DQFramework(spark, framework_config, sample_dataframe_with_success)
     cum_metris = dqf.run()
+    assert all(isinstance(metric["details"], dict) for metric in cum_metris)
     overallsuccess = True
     for metric in cum_metris:
         assert "success" in metric, "Error: no success key in metric"

@@ -91,3 +91,16 @@ def test_local_config_digest_and_atomic_report_write(tmp_path):
 def test_remote_config_cannot_be_claimed_as_immutable_evidence():
     with pytest.raises(ConfigurationError, match="local configuration"):
         sha256_file_reference("https://example.test/rules.conf")
+
+
+@pytest.mark.parametrize("number", [float("nan"), float("inf"), -float("inf")])
+def test_report_rejects_nonfinite_diagnostics(number):
+    with pytest.raises(ValidationError, match="finite"):
+        report([{"check": "finite", "success": True, "details": number}])
+
+
+def test_report_preserves_typed_and_legacy_equivalence():
+    from dq.outcomes import CheckOutcome
+
+    legacy = {"check": "complete", "success": True, "details": {"count": 3}}
+    assert report([CheckOutcome.from_legacy(legacy)]) == report([legacy])

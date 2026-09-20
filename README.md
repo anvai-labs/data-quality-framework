@@ -111,6 +111,32 @@ all check outcomes. Evidence generation requires a local configuration file;
 materialize remote configurations locally before validation so the exact bytes
 can be hashed.
 
+The facade and report builder validate summaries through an immutable
+`dq.outcomes.CheckOutcome` boundary. Valid JSON extension fields are preserved;
+unknown success values, non-finite numbers, non-string object keys, cyclic or
+oversized diagnostics fail closed. Exports are independent dictionaries, so
+runtime enrichment no longer mutates engine-owned results.
+
+Limits: 10,000 outcomes, 1 MiB per encoded outcome, 16 MiB per batch/run,
+10,000 diagnostic nodes per outcome, and nesting depth 16. Reduce diagnostic
+payloads or split the validation job; results are never silently truncated.
+These are evidence-boundary limits, not protection against upstream Spark
+collection. Existing Spark `Row` details now export named dictionaries instead
+of positional JSON arrays; consumers must use field names. `dq-report/v1` and
+the public list-of-dictionaries result API remain unchanged.
+
+```python
+from dq.outcomes import CheckOutcome
+
+outcome = CheckOutcome.from_legacy({"check": "complete", "success": True})
+assert outcome.success
+legacy = outcome.to_legacy()  # an independent mutable copy
+```
+
+This is modernization unit U3a, not the portable rule/metric planner. Engine-owned
+repository writes still precede validation and are not admission evidence. The
+framework does not yet provide a transactional PostgreSQL admission sink.
+
 ## Supported Engines
 
 | Engine | Description | Use Case |
