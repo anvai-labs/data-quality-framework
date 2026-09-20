@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a bounded PyDeequ DQDL compatibility engine and executable example
+- Added ADR-002 for an engine-neutral rule and metric kernel with Spark, PyDeequ,
+  Great Expectations, and Arrow/DataFusion adapters
+
+### Changed
+
+- Upgraded PyDeequ from 1.6.0 to 1.7.0 and the Spark 3.5 Deequ JAR from 2.0.8
+  to 2.0.21; CI now uses Java 17 for Spark integration
+- Made the top-level package and configuration helpers lazy with respect to Spark,
+  PyDeequ, and AWS dependencies; package metadata is the sole version source
+- Made structural validation engine-aware and validated every checked-in HOCON example
+
 ### Security
 
 - Replaced Python evaluation of configured assertions and generated PyDeequ
@@ -15,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 
 - Added the active architecture modernization plan, technical-debt ledger, and
-  incremental typed-kernel ADR
+  incremental typed-kernel ADRs
 
 ## [2.1.0] - 2026-09-20
 

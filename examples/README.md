@@ -5,6 +5,7 @@ This directory contains example configurations and scripts demonstrating how to 
 ## Configuration Examples
 
 - `basic_deequ_validation.conf` - Basic data quality checks using the Deequ engine
+- `dqdl_validation.conf` - Vendor-specific DQDL compatibility rules through PyDeequ
 - `schema_validation.conf` - Schema validation with datatype, nullable, and unique constraints
 - `custom_constraints.conf` - Custom engine constraints (distinctness, rate-of-change, negative values)
 - `multi_engine_pipeline.conf` - Multi-engine pipeline combining Deequ and schema validation
@@ -28,3 +29,14 @@ Then run the sample job:
 ```bash
 python examples/sample_spark_job.py
 ```
+
+The local sample expects `lib/deequ-2.0.21-spark-3.5.jar`; download the matching artifact
+from Maven Central or use the Maven-package setup in the root README. DQDL also requires
+`software.amazon.glue:dqdl:1.0.0` on the classpath; see the
+[operator reference](../docs/index.adoc). The sample intentionally contains a missing email
+and exits nonzero to demonstrate failed-check handling. Configuration validation checks
+structure; catalog examples still require the named tables, credentials, and compatible data.
+
+CI parses every checked-in `.conf` file with the same structural validator used by
+`dq-validate`. DQDL provides compatibility for existing Deequ rulesets; portable typed
+rules will be introduced through the engine-neutral kernel described in ADR-002.

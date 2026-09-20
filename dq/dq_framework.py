@@ -6,12 +6,11 @@
 import logging
 import json
 import re
+import time
 from collections import defaultdict
 from urllib.parse import urlparse
 
-from pyspark.sql import SparkSession
 from pyhocon import ConfigFactory
-from pydeequ.repository import ResultKey
 
 from dq.engine.engine_loader import EngineLoader
 from dq.utils import config_utils, constants
@@ -192,7 +191,7 @@ class DQFramework:
                 - ``ts``: Timestamp in milliseconds
                 - ``jobid``: Spark application ID
         """
-        current_time_in_millis = ResultKey.current_milli_time()
+        current_time_in_millis = time.time_ns() // 1_000_000
         cumulative_metrics = []
 
         rule_configs = self._config.get("dqframework.dqrules", [])

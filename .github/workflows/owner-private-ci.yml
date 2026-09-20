@@ -79,6 +79,9 @@ jobs:
       - name: Check formatting
         run: poetry run black --check dq/
 
+      - name: Validate example without optional engine dependencies
+        run: poetry run dq-validate examples/basic_deequ_validation.conf
+
       - name: Lint
         run: >-
           poetry run flake8 dq/ --exclude=dq/notebooks
@@ -131,7 +134,7 @@ jobs:
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
-          java-version: "11"
+          java-version: "17"
 
       - name: Install Poetry
         run: pip install poetry==2.4.2
@@ -142,8 +145,10 @@ jobs:
       - name: Download Deequ JAR
         run: |
           mkdir -p lib
-          wget -q -O lib/deequ-2.0.8-spark-3.5.jar \
-            https://repo1.maven.org/maven2/com/amazon/deequ/deequ/2.0.8-spark-3.5/deequ-2.0.8-spark-3.5.jar
+          wget -q -O lib/deequ-2.0.21-spark-3.5.jar \
+            https://repo1.maven.org/maven2/com/amazon/deequ/deequ/2.0.21-spark-3.5/deequ-2.0.21-spark-3.5.jar
+          wget -q -O lib/dqdl-1.0.0.jar \
+            https://repo1.maven.org/maven2/software/amazon/glue/dqdl/1.0.0/dqdl-1.0.0.jar
 
       - name: Run tests
         run: >-

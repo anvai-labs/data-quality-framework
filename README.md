@@ -8,13 +8,16 @@ A flexible, configuration-driven data quality framework for Apache Spark with pl
 ## Features
 
 - **Configuration-Driven**: Define validation rules in HOCON format
-- **Multiple Engines**: Built-in support for Deequ, Great Expectations, schema validation, and custom constraints
+- **Multiple Engines**: Built-in support for Deequ, DQDL, Great Expectations, schema validation, and custom constraints
 - **Extensible**: Easy to add custom engines and constraints via Python reflection
 - **Spark Native**: Designed for distributed data processing with PySpark
 
 ## Installation
 
 ```bash
+# Lightweight configuration/report helpers do not import Spark or cloud SDKs.
+pip install data-quality-framework
+
 # The framework orchestrator and built-in schema/custom engines require Spark and PyDeequ.
 pip install data-quality-framework[spark,deequ]
 
@@ -39,11 +42,21 @@ poetry install -E spark -E deequ -E aws
 ## Quick Start
 
 ```python
+import os
+
+os.environ["SPARK_VERSION"] = "3.5"  # Set before importing PyDeequ-backed engines.
+
 from pyspark.sql import SparkSession
+import pydeequ
 from dq.dq_framework import DQFramework
 
-# Create Spark session
-spark = SparkSession.builder.appName("dq-example").getOrCreate()
+# Resolve the matching Deequ runtime and its dependencies before creating Spark.
+spark = (
+    SparkSession.builder.appName("dq-example")
+    .config("spark.jars.packages", pydeequ.deequ_maven_coord)
+    .config("spark.jars.excludes", pydeequ.f2j_maven_coord)
+    .getOrCreate()
+)
 
 # Define validation rules in HOCON format
 config = """
@@ -187,10 +200,15 @@ Place your engine in `dq/engine/mycustom/mycustom_engine.py` and reference it in
 
 - Python 3.12 and 3.13 (the tested source and CI matrix)
 - Apache Spark 3.5.9
-- Deequ JAR file (for Deequ engine): `lib/deequ-2.0.8-spark-3.5.jar`
+- PyDeequ 1.7.0
+- Deequ JAR file (for Deequ engine): `lib/deequ-2.0.21-spark-3.5.jar`
+- DQDL additionally needs `lib/dqdl-1.0.0.jar` on the Spark classpath
+- Java 17 (CI runtime)
 
-PyDeequ 1.6.0 currently maps Spark versions only through Spark 3.5. The repository does not
-claim Spark 4 or Databricks Runtime 18 compatibility yet; see the runtime boundary below.
+PyDeequ 1.7.0 also maps Spark 4.1, but this release deliberately certifies Spark 3.5.9 only.
+Spark 4/Databricks Runtime 18 needs its own adapter and semantic-parity lane; see the runtime
+boundary in the [operator reference](docs/index.adoc) and the
+[engine-neutral-kernel ADR](docs/decisions/adr/ADR-002-engine-neutral-rule-kernel.adoc).
 
 ## Development
 
