@@ -16,7 +16,7 @@ from pydeequ.repository import ResultKey
 from dq.engine.engine_loader import EngineLoader
 from dq.utils import config_utils, constants
 from dq.catalog.catalog_factory import CatalogFactory
-from dq.exceptions import ConfigurationError, DataFrameNotFoundError
+from dq.exceptions import ConfigurationError, DataFrameNotFoundError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -133,12 +133,20 @@ class DQFramework:
         config_dataframes = self._config.get("dqframework.dataframes", {})
 
         for df_name, table_ref in config_dataframes.items():
+            # An explicitly injected default is already the authoritative source for
+            # the logical "default" dataset. Avoid resolving a shadowed catalog
+            # reference (commonly a placeholder in reusable rule configurations).
+            if df_name == "default" and self.default_dataframe is not None:
+                dataframes[df_name] = self.default_dataframe
+                continue
             try:
                 df = self._resolve_dataframe(df_name, table_ref)
                 if df is not None:
                     dataframes[df_name] = df
             except Exception as e:
-                logger.warning("Could not load DataFrame '%s': %s", df_name, e)
+                raise DataFrameNotFoundError(
+                    f"Could not load configured DataFrame '{df_name}': {e}"
+                ) from e
 
         if self.default_dataframe is not None and "default" not in dataframes:
             dataframes["default"] = self.default_dataframe
@@ -187,13 +195,18 @@ class DQFramework:
         current_time_in_millis = ResultKey.current_milli_time()
         cumulative_metrics = []
 
-        for rule_config in self._config.get("dqframework.dqrules", []):
+        rule_configs = self._config.get("dqframework.dqrules", [])
+        if not rule_configs:
+            raise ConfigurationError("No dqrules defined in configuration")
+
+        for rule_index, rule_config in enumerate(rule_configs):
             df_names = rule_config.get("dataframes", ["default"])
             engine_name = rule_config.get(constants.DQ_ENGINE_NAME, None)
 
             if engine_name is None:
-                logger.warning("Rule missing 'engine' key, skipping: %s", rule_config)
-                continue
+                raise ConfigurationError(
+                    f"Rule {rule_index} is missing required key 'engine'"
+                )
 
             engine = EngineLoader().load_engine(
                 engine_name, rule_config, current_time_in_millis
@@ -204,12 +217,22 @@ class DQFramework:
                 summary_metrics = engine.apply(
                     dataframe, repository=self._config.get("dqframework.repository", {})
                 )
+                if not summary_metrics:
+                    raise ValidationError(
+                        f"Rule {rule_index} emitted zero outcomes for DataFrame "
+                        f"'{df_name}'"
+                    )
                 for metric in summary_metrics:
+                    success = metric.get(constants.DQ_METRICS_RESULT_SUCCESS_KEY)
+                    if not isinstance(success, bool):
+                        raise ValidationError(
+                            f"Rule {rule_index} emitted an outcome without a boolean "
+                            f"'{constants.DQ_METRICS_RESULT_SUCCESS_KEY}' field"
+                        )
                     metric["ts"] = current_time_in_millis
                     metric["jobid"] = self._spark.sparkContext.applicationId
-                    if constants.DQ_METRICS_RESULT_SUCCESS_KEY in metric:
-                        if not metric[constants.DQ_METRICS_RESULT_SUCCESS_KEY]:
-                            logger.warning("Check failed: %s", json.dumps(metric))
+                    if not success:
+                        logger.warning("Check failed: %s", json.dumps(metric))
                     cumulative_metrics.append(metric)
 
         return cumulative_metrics

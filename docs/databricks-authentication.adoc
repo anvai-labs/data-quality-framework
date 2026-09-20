@@ -13,7 +13,7 @@ constructor remains supported for compatibility, passes the token directly to
 the SDK, and does not retain it on the check object.
 
 The package, Spark 3.5 integration, and optional Databricks integration require
-Python 3.10 or newer. CI tests Python 3.10, 3.11, and 3.12.
+Python 3.12 or 3.13. CI tests both supported versions.
 
 Official references:
 

@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.13"
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
@@ -34,10 +34,7 @@ jobs:
       - name: Install Poetry
         run: pip install poetry==2.4.2
       - name: Install dependencies
-        run: |
-          poetry install --with dev -E spark -E aws -E databricks
-          poetry run pip install pandas==2.2.3
-          poetry run pip install --no-deps pydeequ==1.6.0
+        run: poetry install --with dev -E spark -E deequ -E aws -E databricks
       - name: Download Deequ JAR
         run: |
           mkdir -p lib

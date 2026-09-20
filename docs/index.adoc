@@ -10,7 +10,7 @@ This document describes behavior implemented on the current default branch. Docu
 
 == Supported runtime
 
-The tested source matrix is Python 3.10, 3.11, and 3.12 with PySpark 3.5.9, PyDeequ 1.6.0,
+The tested source matrix is Python 3.12 and 3.13 with PySpark 3.5.9, PyDeequ 1.6.0,
 and the Deequ `2.0.8-spark-3.5` JAR. PyDeequ 1.6.0 does not map Spark 4.x artifacts, so this
 repository does not claim Spark 4 or Databricks Runtime 18 compatibility.
 
@@ -204,7 +204,7 @@ See link:databricks-authentication.adoc[Databricks authentication and runtime co
 
 == Tests and CI
 
-CI runs the Spark-backed test suite on Python 3.10, 3.11, and 3.12. It rejects missing tests,
+CI runs the Spark-backed test suite on Python 3.12 and 3.13. It rejects missing tests,
 enforces independent 55% line and branch floors, enforces changed-code coverage, runs Black,
 Flake8, Bandit, and pip-audit, builds the package, reviews dependency changes, and checks
 documentation links. A fail-closed aggregate job is the required branch-protection context.

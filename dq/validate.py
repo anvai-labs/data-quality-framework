@@ -14,6 +14,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def is_local_config_reference(config_path: str) -> bool:
+    """Return whether a configuration can be validated without Spark or I/O."""
+    from urllib.parse import urlparse
+
+    return urlparse(config_path).scheme in ("", "file")
+
+
 def validate_config(config_path: str) -> bool:
     """Validate a HOCON configuration file.
 
@@ -29,7 +36,7 @@ def validate_config(config_path: str) -> bool:
 
         parsed = urlparse(config_path)
 
-        if parsed.scheme == "" or parsed.scheme == "file":
+        if is_local_config_reference(config_path):
             # Local file
             file_path = (
                 config_path.replace("file://", "")
@@ -38,11 +45,14 @@ def validate_config(config_path: str) -> bool:
             )
             config = ConfigFactory.parse_file(file_path)
         else:
-            # For s3://, http://, etc., we'd need additional handling
-            logger.warning(
-                f"Remote config validation not fully supported for scheme: {parsed.scheme}"
+            # Treat an unvalidated remote rule set as unknown, never valid.  A
+            # caller that needs a remote source must first materialize and
+            # validate an immutable local copy.
+            logger.error(
+                "Remote config validation is not supported for scheme: %s",
+                parsed.scheme,
             )
-            return True
+            return False
 
         # Check required keys
         if not config.get("dqframework"):
@@ -51,14 +61,16 @@ def validate_config(config_path: str) -> bool:
 
         dqrules = config.get("dqframework.dqrules", [])
         if not dqrules:
-            logger.warning("No dqrules defined in configuration")
+            logger.error("No dqrules defined in configuration")
+            return False
 
         for i, rule in enumerate(dqrules):
             if not rule.get("engine"):
                 logger.error(f"Rule {i}: Missing required key 'engine'")
                 return False
             if not rule.get("checks"):
-                logger.warning(f"Rule {i}: No checks defined")
+                logger.error(f"Rule {i}: No checks defined")
+                return False
 
         logger.info("Configuration is valid")
         return True

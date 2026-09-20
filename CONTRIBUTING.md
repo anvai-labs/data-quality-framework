@@ -53,7 +53,7 @@ Feature requests are welcome! Please provide:
 
 ### Prerequisites
 
-- Python 3.10, 3.11, or 3.12
+- Python 3.12 or 3.13
 - Poetry (for dependency management)
 - Java 11+ (for Spark/Deequ)
 - Git
