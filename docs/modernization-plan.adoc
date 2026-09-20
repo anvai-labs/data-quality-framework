@@ -1,0 +1,212 @@
+= Architecture Modernization Plan
+:toc: left
+:toclevels: 3
+:sectlinks:
+:imagesdir: png
+
+Status: Active +
+Last reviewed: 2026-09-20
+
+== Product vision
+
+The framework turns a versioned rule set and a known dataset into deterministic,
+machine-readable quality evidence. It must fail closed when input identity,
+configuration, execution, or outcomes are ambiguous. Spark remains the distributed
+execution substrate; Python coordinates work and must not pull unbounded dataset rows
+to the driver.
+
+The order of design priorities is:
+
+. Security and evidence integrity.
+. Deterministic failure and recoverability.
+. Distributed execution and bounded driver memory.
+. A stable, understandable operator and extension experience.
+. Additional engines and features.
+
+== Current architecture truth
+
+image::target-execution-kernel.png[Current facade and incremental target architecture]
+
+`DQFramework` is a facade over configuration loading, catalog selection, DataFrame
+resolution, engine discovery, execution, and outcome enrichment. The code already
+uses useful patterns, but their boundaries are inconsistent:
+
+[cols="1,2,2",options="header"]
+|===
+|Pattern |Current use |Assessment
+
+|Facade
+|`DQFramework` and the two command-line entry points
+|Useful public surface, but the facade currently owns too many infrastructure details.
+
+|Strategy and factory
+|`CatalogProvider` plus `CatalogFactory`
+|Good direction. Identifier validation, exception translation, and dependency injection
+must become consistent across providers.
+
+|Plugin/microkernel
+|`DQEngine` plus convention-based `EngineLoader`
+|Extensible, but imports and class naming are runtime-only contracts. Built-ins need an
+explicit registry before third-party entry points are added.
+
+|Builder
+|`DeequCheck` and `DeequConstraintsBuilder`
+|Appropriate for chained PyDeequ APIs. Configuration expressions must be interpreted as
+a bounded DSL, never evaluated as Python.
+
+|Adapter
+|Great Expectations and catalog providers
+|Useful isolation, but optional dependency and version capabilities need explicit checks.
+
+|Repository
+|`repository_utils.save_to_repository`
+|A persistence helper rather than a repository abstraction. Engines currently coordinate
+validation and persistence in the same method.
+|===
+
+The principal runtime data structures are HOCON `ConfigTree` objects, mutable dictionaries
+for check outcomes, Python lists for intermediate custom-engine metrics, Spark DataFrames,
+and a dictionary cache for foreign-key reference data. Spark DataFrames are appropriate for
+dataset-scale state. Configuration and outcome dictionaries need typed immutable boundaries;
+driver-side row lists must remain bounded to check summaries.
+
+== Findings and debt ledger
+
+[cols="1,1,3,3",options="header"]
+|===
+|ID |Priority |Evidence and risk |Target
+
+|TD-ARCH-1
+|P0
+|Configured Deequ assertions and generated suggestions reached `eval()`. A rule file could
+become executable Python instead of declarative input.
+|Restricted assertion and suggestion interpreters with negative security fixtures. No
+`eval()` in package code. *Implemented 2026-09-20.*
+
+|TD-ARCH-2
+|P0
+|Table and column identifiers are validated in only one orchestrator fallback. Unity,
+schema, repository, and custom-engine SQL paths interpolate identifiers independently.
+|One validated identifier value object and quoting policy used at every catalog/SQL boundary.
+
+|TD-ARCH-3
+|P0
+|Engines return mutable dictionaries and Spark `Row` details. The orchestrator, reporter,
+CLI, and consumers independently infer required keys and serializability.
+|A frozen `CheckOutcome` domain model, one legacy-dictionary adapter, and one evidence
+serializer. Unknown/ambiguous outcomes fail at the engine boundary.
+
+|TD-ARCH-4
+|P1
+|`CustomEngine` collects full rate-of-change and grouped result datasets to the driver,
+performs an extra count for logging, and can divide by zero.
+|Distributed window/aggregation expressions that collect only bounded check summaries;
+property and scale fixtures prove equivalence and memory shape.
+
+|TD-ARCH-5
+|P1
+|`DQFramework` loads sources, resolves frames, creates engines, executes rules, mutates
+outcomes, and selects repositories. Tests commonly need Spark to exercise coordination.
+|Keep the public facade but compose injected configuration, resolver, registry, executor,
+and sink ports behind it.
+
+|TD-ARCH-6
+|P1
+|The advertised lightweight package eagerly imports framework, PyDeequ, and AWS dependencies;
+the source `__version__` also drifted from package metadata.
+|Lazy optional imports, one package-version source, capability errors, and core-only import
+tests.
+
+|TD-ARCH-7
+|P1
+|Persistence is called from engines, forces `coalesce(1)`, assumes two-part table names, and
+has no idempotency or write-result contract.
+|Outcome sink port with explicit append/idempotency semantics; bounded test sinks; storage
+tuning belongs to deployment configuration.
+
+|TD-ARCH-8
+|P1
+|Several checked-in examples do not satisfy the same structural validator used by the CLI,
+and examples are not executable CI contracts.
+|Parameterized validation of every local example plus one small end-to-end example per
+supported engine capability.
+
+|TD-ARCH-9
+|P2
+|Large schema/custom check classes mix rule parsing, Spark planning, execution, and formatting;
+tests repeat manual success loops and diagnostic printing.
+|Constraint strategy objects, shared outcome assertions/fixtures, and focused unit versus
+Spark integration markers.
+|===
+
+== Target architecture
+
+The accepted direction is documented in
+link:decisions/adr/ADR-001-incremental-typed-execution-kernel.adoc[ADR-001]. The stable
+facade delegates to five narrow seams:
+
+. A configuration source parses bytes and returns a validated immutable execution plan.
+. A DataFrame resolver maps logical dataset identity to a Spark DataFrame.
+. An engine registry maps an engine identifier to a constraint strategy.
+. An executor runs the plan and returns typed outcomes without persistence side effects.
+. Outcome sinks serialize or persist a completed execution record.
+
+This is a modular monolith. Network services, queues, and a plugin marketplace are not
+required to obtain these boundaries.
+
+== Bounded delivery sequence
+
+[cols="1,3,3,2",options="header"]
+|===
+|Unit |Change |Acceptance |CI cost
+
+|U1
+|Remove executable configuration and establish architecture records.
+|No package `eval()`; allowed assertion/suggestion fixtures pass; malicious AST shapes fail.
+|Pure Python tests, lint, security scan; existing Spark suite once.
+
+|U2
+|Repair package/optional-dependency boundaries and example contracts.
+|Core import without extras; version cannot drift; every local example validates.
+|Pure Python matrix, one package build.
+
+|U3
+|Introduce typed execution plan and `CheckOutcome`, retaining a v2 dictionary adapter.
+|All engines satisfy shared contract tests; report bytes stay compatible with `dq-report/v1`.
+|Pure contract tests plus existing Spark suite.
+
+|U4
+|Centralize identifiers and catalog resolution.
+|Injection and malformed identifier fixtures fail before Spark SQL; provider behavior is
+characterized with fakes.
+|Pure tests, then targeted Spark catalog tests.
+
+|U5
+|Replace custom-engine driver collections with distributed transformations.
+|Equivalence, zero-denominator, empty-input, and bounded-summary tests; benchmark evidence on
+a scheduled/manual runner.
+|Targeted Spark tests; scale test outside ordinary PRs.
+
+|U6
+|Extract outcome sinks and repository semantics.
+|Engines are persistence-free; idempotent fake and Spark storage contracts; no unconditional
+`coalesce(1)`.
+|Pure sink tests and one storage integration lane.
+
+|U7
+|Consolidate test helpers, examples, and extension documentation.
+|Shared assertions replace repeated loops; examples are executable; extension compatibility
+is explicit.
+|Path-scoped documentation and example checks.
+|===
+
+Each unit must land independently green. Coverage should ratchet around changed domain code;
+raising the repository-wide percentage is not a substitute for boundary and negative tests.
+
+== Explicit non-goals
+
+* Replacing Spark or PyDeequ in the same program of work.
+* Building a distributed control plane or long-running service.
+* Loading arbitrary Python plugins from a rule file.
+* Collecting raw failing records into evidence reports.
+* Breaking the v2 result dictionary or `dq-report/v1` without a versioned migration.

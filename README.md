@@ -212,6 +212,8 @@ bandit -r dq/ -x tests
 ## Documentation
 
 - [Current architecture, configuration, and API reference](docs/index.adoc)
+- [Active architecture modernization plan and debt ledger](docs/modernization-plan.adoc)
+- [ADR-001: incremental typed execution kernel](docs/decisions/adr/ADR-001-incremental-typed-execution-kernel.adoc)
 - [Databricks authentication and runtime boundary](docs/databricks-authentication.adoc)
 - [Examples](examples/)
 

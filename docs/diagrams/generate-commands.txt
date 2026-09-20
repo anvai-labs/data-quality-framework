@@ -11,5 +11,6 @@ mmdc -i framework-overview.mmd -o ..\png\framework-overview.png --scale 3
 mmdc -i repository-system.mmd -o ..\png\repository-system.png --scale 3
 mmdc -i spark-integration.mmd -o ..\png\spark-integration.png --scale 3
 mmdc -i testing-strategy.mmd -o ..\png\testing-strategy.png --scale 3
+mmdc -i target-execution-kernel.mmd -o ..\png\target-execution-kernel.png --scale 3
 
 All files should now generate without errors!
