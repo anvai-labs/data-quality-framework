@@ -133,6 +133,12 @@ class DQFramework:
         config_dataframes = self._config.get("dqframework.dataframes", {})
 
         for df_name, table_ref in config_dataframes.items():
+            # An explicitly injected default is already the authoritative source for
+            # the logical "default" dataset. Avoid resolving a shadowed catalog
+            # reference (commonly a placeholder in reusable rule configurations).
+            if df_name == "default" and self.default_dataframe is not None:
+                dataframes[df_name] = self.default_dataframe
+                continue
             try:
                 df = self._resolve_dataframe(df_name, table_ref)
                 if df is not None:

@@ -75,3 +75,22 @@ def test_configured_dataframe_load_failure_is_not_skipped():
 
     with pytest.raises(DataFrameNotFoundError, match="configured DataFrame 'bars'"):
         framework._load_dataframes()
+
+
+def test_injected_default_takes_precedence_over_configured_default_reference():
+    framework = DQFramework.__new__(DQFramework)
+    injected = MagicMock()
+    framework._config = {
+        "dqframework.dataframes": {
+            "default": "placeholder.table",
+            "bars": "market.bars",
+        }
+    }
+    framework.default_dataframe = injected
+    bars = MagicMock()
+    framework._resolve_dataframe = MagicMock(return_value=bars)
+
+    loaded = framework._load_dataframes()
+
+    assert loaded == {"default": injected, "bars": bars}
+    framework._resolve_dataframe.assert_called_once_with("bars", "market.bars")
