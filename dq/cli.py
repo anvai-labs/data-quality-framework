@@ -42,8 +42,25 @@ Examples:
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose output"
     )
+    parser.add_argument(
+        "--report-json",
+        help="Write a versioned, machine-readable evidence report to this path",
+    )
+    parser.add_argument(
+        "--dataset-id",
+        help="Immutable dataset identifier (required with --report-json)",
+    )
+    parser.add_argument(
+        "--dataset-sha256",
+        help="Dataset SHA-256 digest (required with --report-json)",
+    )
 
     args = parser.parse_args()
+
+    if args.report_json and not (args.dataset_id and args.dataset_sha256):
+        parser.error("--report-json requires --dataset-id and --dataset-sha256")
+    if (args.dataset_id or args.dataset_sha256) and not args.report_json:
+        parser.error("dataset evidence options require --report-json")
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -51,6 +68,12 @@ Examples:
     try:
         from pyspark.sql import SparkSession
         from dq.dq_framework import DQFramework
+        from dq.report import build_report, sha256_file_reference, write_report
+        from dq.validate import is_local_config_reference, validate_config
+
+        if is_local_config_reference(args.config) and not validate_config(args.config):
+            logger.error("Configuration validation failed; Spark was not started")
+            return 1
 
         logger.info(f"Initializing Spark session with master: {args.spark_master}")
         spark = (
@@ -65,9 +88,26 @@ Examples:
         logger.info("Running data quality checks...")
         results = framework.run()
 
+        if not results:
+            logger.error("Validation emitted zero check outcomes")
+            return 1
+
         # Print results summary
         passed = sum(1 for r in results if r.get("success", False))
         failed = len(results) - passed
+
+        if args.report_json:
+            report = build_report(
+                results=results,
+                config_reference=args.config,
+                config_sha256=sha256_file_reference(args.config),
+                dataset_id=args.dataset_id,
+                dataset_sha256=args.dataset_sha256,
+                application_id=spark.sparkContext.applicationId,
+                spark_version=spark.version,
+            )
+            write_report(args.report_json, report)
+            logger.info("Wrote data-quality evidence report: %s", args.report_json)
 
         print(f"\n{'='*60}")
         print(f"Data Quality Check Results")

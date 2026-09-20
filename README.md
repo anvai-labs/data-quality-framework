@@ -79,6 +79,25 @@ for result in results:
     print(f"[{status}] {result['check']}")
 ```
 
+### Promotion evidence
+
+Automation can bind every outcome to immutable dataset and rule-set identities:
+
+```bash
+dq-framework rules.conf \
+  --dataset-id bars-spy-2026q3 \
+  --dataset-sha256 "${DATASET_SHA256}" \
+  --report-json results/data-quality.json
+```
+
+The command exits nonzero when configuration is invalid, a configured table
+cannot be loaded, an engine emits no outcomes, an outcome has no Boolean
+`success` value, or any check fails. The versioned `dq-report/v1` document
+contains the dataset and local rule-set digests, runtime identity, summary, and
+all check outcomes. Evidence generation requires a local configuration file;
+materialize remote configurations locally before validation so the exact bytes
+can be hashed.
+
 ## Supported Engines
 
 | Engine | Description | Use Case |
