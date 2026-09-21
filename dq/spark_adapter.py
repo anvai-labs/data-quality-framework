@@ -1,12 +1,14 @@
 # Copyright 2024 Data Quality Framework Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Native Spark adapter executing portable count plans over shared aggregations.
+"""Native Spark adapter executing portable plans over shared aggregations.
 
-Counts/v1 semantics are owned by ``dq.plan``. This adapter computes only global
-counts: one aggregate action per bound dataset with every required metric
-combined, so duplicate metric requests share a single scan and the driver
-receives exactly one aggregate row per dataset — never dataset rows.
+Counts/v1 and groups/v1 semantics are owned by ``dq.plan``. This adapter
+computes only bounded aggregates: counts/v1 plans get one aggregate action per
+dataset with every required metric combined; groups/v1 plans get one aggregate
+per distinct grouping, reducing group-level distinct counts to count/min/max.
+Duplicate metric requests share a single scan, and the driver receives exactly
+one aggregate row per dataset — never dataset or per-group rows.
 Unsupported capabilities and missing, extra, non-DataFrame, or case-ambiguous
 bindings fail before any Spark job runs. ``DatasetRef`` digests certify
 caller-supplied snapshot identity; this adapter does not verify content.
@@ -19,14 +21,30 @@ from typing import TYPE_CHECKING
 
 from dq.exceptions import ConfigurationError
 from dq.outcomes import CheckOutcome
-from dq.plan import CapabilitySet, ExecutionPlan, MetricKind
+from dq.plan import CapabilitySet, ExecutionPlan, MetricKind, SEMANTIC_GROUPS_VERSION
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame
 
 ADAPTER_NAME = "spark"
 ADAPTER_VERSION = "1"
-CAPABILITIES = CapabilitySet(ADAPTER_NAME, ADAPTER_VERSION, frozenset(MetricKind))
+CAPABILITIES = CapabilitySet(
+    ADAPTER_NAME,
+    ADAPTER_VERSION,
+    frozenset({MetricKind.ROW_COUNT, MetricKind.PRESENT_COUNT}),
+)
+GROUP_CAPABILITIES = CapabilitySet(
+    ADAPTER_NAME,
+    ADAPTER_VERSION,
+    frozenset(
+        {
+            MetricKind.GROUP_COUNT,
+            MetricKind.GROUP_MIN_DISTINCT,
+            MetricKind.GROUP_MAX_DISTINCT,
+        }
+    ),
+    SEMANTIC_GROUPS_VERSION,
+)
 
 _MAX_LISTED_COLUMNS = 8
 
@@ -35,12 +53,20 @@ def execute_plan(
     plan: ExecutionPlan, datasets: Mapping[str, DataFrame]
 ) -> tuple[CheckOutcome, ...]:
     """Compute the plan's metrics with Spark and evaluate exact outcomes."""
-    plan.validate_for(CAPABILITIES)
+    capabilities = (
+        GROUP_CAPABILITIES
+        if plan.semantic_version == SEMANTIC_GROUPS_VERSION
+        else CAPABILITIES
+    )
+    plan.validate_for(capabilities)
     bindings = _validated_bindings(plan, datasets)
     values = {}
     for name in sorted(bindings):
-        values.update(_dataset_counts(name, bindings[name], plan))
-    return plan.evaluate(values, CAPABILITIES)
+        if plan.semantic_version == SEMANTIC_GROUPS_VERSION:
+            values.update(_dataset_group_metrics(name, bindings[name], plan))
+        else:
+            values.update(_dataset_counts(name, bindings[name], plan))
+    return plan.evaluate(values, capabilities)
 
 
 def _validated_bindings(plan: ExecutionPlan, datasets) -> dict[str, DataFrame]:
@@ -71,17 +97,32 @@ def _validated_bindings(plan: ExecutionPlan, datasets) -> dict[str, DataFrame]:
     return bindings
 
 
+def _require_exact_column(dataframe, name: str, column: str):
+    """Resolve one column by exact name, rejecting ambiguity, and return it."""
+    fields = dataframe.schema.fields
+    fields_by_name = {field.name: field for field in fields}
+    field = fields_by_name.get(column)
+    if field is None:
+        available = ", ".join(sorted(fields_by_name)[:_MAX_LISTED_COLUMNS])
+        raise ConfigurationError(
+            f"column {column!r} in dataset {name!r} requires an exact "
+            f"case-sensitive match; available columns: {available}"
+        )
+    duplicates = any(other is not field and other.name == column for other in fields)
+    if duplicates or any(
+        other.lower() == column.lower() for other in fields_by_name if other != column
+    ):
+        raise ConfigurationError(
+            f"column {column!r} in dataset {name!r} is ambiguous: duplicate or "
+            "case-insensitive colliding fields cannot be resolved"
+        )
+    return field
+
+
 def _dataset_counts(name: str, dataframe, plan: ExecutionPlan) -> dict:
     from pyspark.sql import functions as F
     from pyspark.sql.types import DoubleType, FloatType
 
-    fields = dataframe.schema.fields
-    fields_by_name = {field.name: field for field in fields}
-    duplicates = {
-        field.name
-        for field in fields
-        if sum(other.name == field.name for other in fields) > 1
-    }
     metrics = [metric for metric in plan.metrics if metric.dataset.name == name]
 
     aggregates = [F.count(F.lit(1)).alias("dq_row_count")]
@@ -90,22 +131,7 @@ def _dataset_counts(name: str, dataframe, plan: ExecutionPlan) -> dict:
         if metric.kind is not MetricKind.PRESENT_COUNT or metric.column is None:
             continue
         column = metric.column.name
-        field = fields_by_name.get(column)
-        if field is None:
-            available = ", ".join(sorted(fields_by_name)[:_MAX_LISTED_COLUMNS])
-            raise ConfigurationError(
-                f"column {column!r} in dataset {name!r} requires an exact "
-                f"case-sensitive match; available columns: {available}"
-            )
-        if column in duplicates or any(
-            other.lower() == column.lower()
-            for other in fields_by_name
-            if other != column
-        ):
-            raise ConfigurationError(
-                f"column {column!r} in dataset {name!r} is ambiguous: duplicate or "
-                "case-insensitive colliding fields cannot be resolved"
-            )
+        field = _require_exact_column(dataframe, name, column)
         column_expr = F.col(column)
         condition = column_expr.isNotNull()
         if isinstance(field.dataType, (FloatType, DoubleType)):
@@ -121,4 +147,72 @@ def _dataset_counts(name: str, dataframe, plan: ExecutionPlan) -> dict:
             values[metric] = int(row["dq_row_count"])
         else:
             values[metric] = int(row[aliases[metric]])
+    return values
+
+
+def _dataset_group_metrics(name: str, dataframe, plan: ExecutionPlan) -> dict:
+    """Compute grouped distinct bounds, one aggregate per distinct grouping.
+
+    Group-level distinct counts are reduced to the group count and the
+    minimum and maximum per column inside Spark; the driver receives one
+    summary row per grouping. On empty input the bounds are 0 and every
+    grouped rule passes vacuously in the kernel.
+    """
+    from pyspark.sql import functions as F
+
+    metrics = [metric for metric in plan.metrics if metric.dataset.name == name]
+    groupings = {}
+    for metric in metrics:
+        groupings.setdefault(metric.group_by, []).append(metric)
+
+    values = {}
+    for grouping in sorted(
+        groupings, key=lambda columns: [column.name for column in columns]
+    ):
+        group_metrics = groupings[grouping]
+        columns = sorted(
+            {
+                metric.column.name
+                for metric in group_metrics
+                if metric.column is not None
+            }
+        )
+        for column in columns:
+            _require_exact_column(dataframe, name, column)
+        for column_ref in grouping:
+            _require_exact_column(dataframe, name, column_ref.name)
+
+        grouped_counts = dataframe.groupBy(
+            *[F.col(column_ref.name) for column_ref in grouping]
+        ).agg(
+            *[
+                F.countDistinct(F.col(column)).alias(f"dq_distinct_{index}")
+                for index, column in enumerate(columns)
+            ]
+        )
+        aggregate_exprs = [F.count(F.lit(1)).alias("dq_group_count")]
+        for index in range(len(columns)):
+            aggregate_exprs.extend(
+                [
+                    F.min(F.col(f"dq_distinct_{index}")).alias(f"dq_min_{index}"),
+                    F.max(F.col(f"dq_distinct_{index}")).alias(f"dq_max_{index}"),
+                ]
+            )
+        summary = grouped_counts.agg(*aggregate_exprs).head()
+        group_count = int(summary["dq_group_count"])
+
+        column_index = {column: index for index, column in enumerate(columns)}
+        for metric in group_metrics:
+            if metric.kind is MetricKind.GROUP_COUNT:
+                values[metric] = group_count
+            elif group_count == 0:
+                values[metric] = 0
+            elif metric.kind is MetricKind.GROUP_MIN_DISTINCT:
+                values[metric] = int(
+                    summary[f"dq_min_{column_index[metric.column.name]}"]
+                )
+            else:
+                values[metric] = int(
+                    summary[f"dq_max_{column_index[metric.column.name]}"]
+                )
     return values

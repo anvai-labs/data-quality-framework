@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the groups/v1 kernel contract (ADR-004): grouped distinct-count bounds as
   exact, threshold-independent metrics with a grouped-distinct rule kind and
   vacuous-pass empty-input semantics matching the legacy constraint
+- Extended the native Spark adapter to execute groups/v1 plans through one
+  aggregate per distinct grouping, and the translation subset to convert
+  `DistinctnessByGroup` checks into `.min`/`.max` grouped-distinct rules; a
+  differential suite proves the portable path decides identically to the
+  legacy constraint, including on empty input and one-sided thresholds
 - Added a bounded PyDeequ DQDL compatibility engine and executable example
 - Added ADR-002 for an engine-neutral rule and metric kernel with Spark, PyDeequ,
   Great Expectations, and Arrow/DataFusion adapters

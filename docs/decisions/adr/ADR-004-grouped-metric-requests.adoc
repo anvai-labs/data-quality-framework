@@ -51,7 +51,8 @@ minimal, threshold-independent metric set.
 * A grouped rule requires exactly two metrics: ``GROUP_COUNT`` and its target
   (``GROUP_MIN_DISTINCT`` or ``GROUP_MAX_DISTINCT``). Adapters compute both
   bounds from the same aggregate, but the kernel validates only what the rule
-  constrains, so empty input needs no sentinel values.
+  constrains; when no groups exist the adapter supplies 0 for the bound and
+  the kernel never reads it.
 * Empty input (``GROUP_COUNT`` = 0) makes every grouped rule pass vacuously
   with reason ``no_groups``, preserving the legacy outcome. When groups
   exist, the rule compares the target metric as an exact fraction.
@@ -80,9 +81,10 @@ would break metric/rule separation or boundedness and needs its own design.
 
 * Pure kernel contracts: construction, canonical identity, version pinning,
   metric deduplication, evaluation of both predicates, and the vacuous and
-  inconsistent-value paths.
+  inconsistent-value paths. *Implemented 2026-09-20.*
 * The Spark adapter executes groups/v1 through one shared aggregate per
-  dataset and never receives per-group rows.
+  dataset and never receives per-group rows. *Implemented 2026-09-21; one
+  aggregate per distinct grouping when a plan mixes groupings.*
 * Differential equivalence: groups/v1 rules and the legacy
-  ``DistinctnessByGroup`` strategy decide identically over shared fixtures,
-  including empty input and one-sided thresholds.
+  ``DistinctnessByGroup`` constraint decide identically over shared fixtures,
+  including empty input and one-sided thresholds. *Implemented 2026-09-21.*

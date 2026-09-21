@@ -1,14 +1,16 @@
 # Copyright 2024 Data Quality Framework Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Translate a bounded legacy HOCON check subset into portable count plans.
+"""Translate a bounded legacy HOCON check subset into portable plans.
 
-Only rules exactly representable in counts/v1 cross this boundary:
-``isComplete``, ``hasCompleteness`` with one literal comparison, and ``hasSize``
-with one integer comparison. Everything else fails closed and stays on the
-legacy engine path. Counts/v1 semantics (null and NaN exclusion, empty-dataset
-failure) are owned by ``dq.plan`` and can differ from legacy PyDeequ results;
-callers certify the snapshot digest because legacy configuration has none.
+Counts/v1 accepts ``isComplete``, ``hasCompleteness`` with one literal
+comparison, and ``hasSize`` with one integer comparison. Groups/v1 accepts the
+custom engine's ``DistinctnessByGroup``, translating each column into up to two
+grouped-distinct rules (a ``.min`` and a ``.max`` bound) whose decisions match
+the legacy constraint exactly. Everything else fails closed and stays on the
+legacy engine path. Semantics are owned by ``dq.plan`` and can differ from
+legacy PyDeequ results; callers certify the snapshot digest because legacy
+configuration has none.
 """
 
 from __future__ import annotations
@@ -23,13 +25,16 @@ from dq.plan import (
     Comparison,
     DatasetRef,
     ExecutionPlan,
+    MetricKind,
     Predicate,
     RuleKind,
     RuleSpec,
     Severity,
 )
 
-SUPPORTED_CONSTRAINTS = frozenset({"isComplete", "hasCompleteness", "hasSize"})
+SUPPORTED_CONSTRAINTS = frozenset(
+    {"isComplete", "hasCompleteness", "hasSize", "DistinctnessByGroup"}
+)
 
 _COMPARISONS = {
     ast.Gt: Comparison.GT,
@@ -57,21 +62,25 @@ def translate_checks(
         raise ConfigurationError("translation requires a typed default severity")
     if isinstance(checks, (str, bytes, Mapping)) or not isinstance(checks, Iterable):
         raise ConfigurationError("translation requires an iterable of check mappings")
-    return tuple(_translate_check(check, dataset, default_severity) for check in checks)
+    return tuple(
+        rule
+        for check in checks
+        for rule in _translate_check(check, dataset, default_severity)
+    )
 
 
 def _translate_check(
     check: object, dataset: DatasetRef, default_severity: Severity
-) -> RuleSpec:
+) -> tuple[RuleSpec, ...]:
     if not isinstance(check, Mapping):
         raise ConfigurationError("each check must be a mapping of HOCON fields")
 
     constraint = check.get("constraint", None)
     if type(constraint) is not str or constraint not in SUPPORTED_CONSTRAINTS:
         raise ConfigurationError(
-            f"constraint {constraint!r} cannot be translated to counts/v1; only "
-            f"{sorted(SUPPORTED_CONSTRAINTS)} are supported; keep this rule on "
-            "the legacy engine path"
+            f"constraint {constraint!r} cannot be translated to portable plans; "
+            f"only {sorted(SUPPORTED_CONSTRAINTS)} are supported; keep this rule "
+            "on the legacy engine path"
         )
 
     rule_id = check.get("alias", None)
@@ -92,6 +101,9 @@ def _translate_check(
         raise ConfigurationError(
             f"check {rule_id!r} level must be Error or Warning, not {level!r}"
         )
+
+    if constraint == "DistinctnessByGroup":
+        return _translate_grouped(check, rule_id, dataset, severity)
 
     for rejected in ("kwargs", "hint", "columns"):
         if check.get(rejected, None) is not None:
@@ -129,18 +141,92 @@ def _translate_check(
                     "completeness"
                 )
             column_ref = ColumnRef(column)
-        return RuleSpec(
-            rule_id,
-            dataset,
-            kind,
-            Predicate(operator, threshold),
-            column_ref,
-            severity,
+        return (
+            RuleSpec(
+                rule_id,
+                dataset,
+                kind,
+                Predicate(operator, threshold),
+                column_ref,
+                severity,
+            ),
         )
     except ConfigurationError as error:
         raise ConfigurationError(
             f"check {rule_id!r} cannot be translated: {error}"
         ) from error
+
+
+def _translate_grouped(
+    check, rule_id, dataset: DatasetRef, severity: Severity
+) -> tuple[RuleSpec, ...]:
+    """Translate one DistinctnessByGroup check into grouped-distinct rules.
+
+    Each column yields up to two rules (a ``.min`` lower bound and a ``.max``
+    upper bound); empty and zero thresholds are disabled exactly like the
+    legacy comparison, so the decisions match the constraint verbatim.
+    """
+    for rejected in ("kwargs", "hint", "assertion"):
+        if check.get(rejected, None) is not None:
+            raise ConfigurationError(
+                f"check {rule_id!r} cannot translate {rejected!r} into groups/v1; "
+                "keep this rule on the legacy engine path"
+            )
+    columns = check.get("columns", None)
+    group_by = check.get("group_by", None)
+    if (
+        type(columns) is not list
+        or not columns
+        or any(type(column) is not str for column in columns)
+    ):
+        raise ConfigurationError(
+            f"check {rule_id!r} requires a non-empty list of column names"
+        )
+    if (
+        type(group_by) is not list
+        or not group_by
+        or any(type(column) is not str for column in group_by)
+    ):
+        raise ConfigurationError(
+            f"check {rule_id!r} requires a non-empty list of group_by columns"
+        )
+    minimum = check.get("min", None)
+    maximum = check.get("max", None)
+    if not minimum and not maximum:
+        raise ConfigurationError(
+            f"check {rule_id!r} requires a truthy min or max threshold"
+        )
+    grouping = tuple(ColumnRef(column) for column in group_by)
+    rules = []
+    for column in columns:
+        column_ref = ColumnRef(column)
+        if minimum:
+            rules.append(
+                RuleSpec(
+                    f"{rule_id}.{column}.min",
+                    dataset,
+                    RuleKind.GROUPED_DISTINCT,
+                    Predicate(Comparison.GE, Decimal(minimum)),
+                    column_ref,
+                    severity,
+                    group_by=grouping,
+                    target=MetricKind.GROUP_MIN_DISTINCT,
+                )
+            )
+        if maximum:
+            rules.append(
+                RuleSpec(
+                    f"{rule_id}.{column}.max",
+                    dataset,
+                    RuleKind.GROUPED_DISTINCT,
+                    Predicate(Comparison.LE, Decimal(maximum)),
+                    column_ref,
+                    severity,
+                    group_by=grouping,
+                    target=MetricKind.GROUP_MAX_DISTINCT,
+                )
+            )
+    return tuple(rules)
 
 
 def _parse_comparison(assertion, rule_id):

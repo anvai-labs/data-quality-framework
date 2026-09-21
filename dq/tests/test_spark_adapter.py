@@ -267,7 +267,9 @@ def test_capabilities_declare_the_full_counts_v1_metric_subset():
     assert CAPABILITIES.adapter == ADAPTER_NAME == "spark"
     assert CAPABILITIES.version == ADAPTER_VERSION
     assert CAPABILITIES.semantic_version == SEMANTICS_VERSION
-    assert CAPABILITIES.metrics == frozenset(MetricKind)
+    assert CAPABILITIES.metrics == frozenset(
+        {MetricKind.ROW_COUNT, MetricKind.PRESENT_COUNT}
+    )
 
 
 def test_outcomes_are_bounded_immutable_snapshots(mixed_dataframe):

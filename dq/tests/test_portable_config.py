@@ -14,6 +14,7 @@ import pytest
 from dq.exceptions import ConfigurationError
 from dq.plan import (
     CapabilitySet,
+    ColumnRef,
     Comparison,
     DatasetRef,
     MetricKind,
@@ -40,7 +41,7 @@ def check(**overrides):
 
 def test_supported_subset_is_exactly_the_representable_rules():
     assert SUPPORTED_CONSTRAINTS == frozenset(
-        {"isComplete", "hasCompleteness", "hasSize"}
+        {"isComplete", "hasCompleteness", "hasSize", "DistinctnessByGroup"}
     )
 
 
@@ -259,15 +260,13 @@ def test_translates_parsed_pyhocon_config_trees():
     """pyhocon ConfigTree raises on one-argument .get; translation must not."""
     from pyhocon import ConfigFactory
 
-    config = ConfigFactory.parse_string(
-        """
+    config = ConfigFactory.parse_string("""
         checks = [
             { alias = "enough_rows", constraint = "hasSize", assertion = "lambda x: x >= 5", level = "Error" }
             { alias = "id_complete", constraint = "isComplete", column = "id", level = "Error" }
             { alias = "score_present", constraint = "hasCompleteness", column = "score", assertion = "lambda x: x >= 0.5", level = "Warning" }
         ]
-        """
-    )
+        """)
     rules = translate_checks(config["checks"], DATASET)
     assert [(rule.rule_id, rule.kind) for rule in rules] == [
         ("enough_rows", RuleKind.SIZE),
@@ -278,6 +277,123 @@ def test_translates_parsed_pyhocon_config_trees():
     assert rules[1].predicate.operator is Comparison.EQ
     assert rules[2].predicate.threshold == Decimal("0.5")
     assert rules[2].severity is Severity.WARNING
+
+
+def test_translates_distinctness_by_group_into_bounded_rules():
+    checks = [
+        {
+            "alias": "ticker_bounds",
+            "constraint": "DistinctnessByGroup",
+            "columns": ["ticker", "book"],
+            "group_by": ["exchange"],
+            "min": 2,
+            "max": 9,
+            "level": "Error",
+        }
+    ]
+    rules = translate_checks(checks, DATASET)
+    assert [(rule.rule_id, rule.column.name) for rule in rules] == [
+        ("ticker_bounds.ticker.min", "ticker"),
+        ("ticker_bounds.ticker.max", "ticker"),
+        ("ticker_bounds.book.min", "book"),
+        ("ticker_bounds.book.max", "book"),
+    ]
+    minimum_rule = rules[0]
+    assert minimum_rule.kind is RuleKind.GROUPED_DISTINCT
+    assert minimum_rule.predicate.operator is Comparison.GE
+    assert minimum_rule.predicate.threshold == Decimal(2)
+    assert minimum_rule.group_by == (ColumnRef("exchange"),)
+    assert minimum_rule.target is MetricKind.GROUP_MIN_DISTINCT
+    assert minimum_rule.severity is Severity.ERROR
+    maximum_rule = rules[1]
+    assert maximum_rule.predicate.operator is Comparison.LE
+    assert maximum_rule.target is MetricKind.GROUP_MAX_DISTINCT
+
+
+def test_distinctness_one_sided_thresholds_translate_to_one_rule():
+    (minimum_rule,) = translate_checks(
+        [
+            {
+                "alias": "lo",
+                "constraint": "DistinctnessByGroup",
+                "columns": ["id"],
+                "group_by": ["g"],
+                "min": 2,
+            }
+        ],
+        DATASET,
+    )
+    assert minimum_rule.rule_id == "lo.id.min"
+    (maximum_rule,) = translate_checks(
+        [
+            {
+                "alias": "hi",
+                "constraint": "DistinctnessByGroup",
+                "columns": ["id"],
+                "group_by": ["g"],
+                "max": 7,
+            }
+        ],
+        DATASET,
+    )
+    assert maximum_rule.rule_id == "hi.id.max"
+    assert maximum_rule.predicate.operator is Comparison.LE
+
+
+def test_distinctness_rejects_disabled_thresholds_and_bad_shapes():
+    base = {
+        "alias": "d",
+        "constraint": "DistinctnessByGroup",
+        "columns": ["id"],
+        "group_by": ["g"],
+    }
+    with pytest.raises(ConfigurationError, match="truthy min or max"):
+        translate_checks([base], DATASET)
+    with pytest.raises(ConfigurationError, match="truthy min or max"):
+        translate_checks([dict(base, min=0, max=0)], DATASET)
+    with pytest.raises(ConfigurationError, match="column names"):
+        translate_checks(
+            [
+                {
+                    "alias": "d",
+                    "constraint": "DistinctnessByGroup",
+                    "group_by": ["g"],
+                    "min": 1,
+                }
+            ],
+            DATASET,
+        )
+    with pytest.raises(ConfigurationError, match="group_by"):
+        translate_checks(
+            [
+                {
+                    "alias": "d",
+                    "constraint": "DistinctnessByGroup",
+                    "columns": ["id"],
+                    "min": 1,
+                }
+            ],
+            DATASET,
+        )
+    with pytest.raises(ConfigurationError, match="group_by"):
+        translate_checks([dict(base, min=1, group_by=[])], DATASET)
+    with pytest.raises(ConfigurationError, match="groups/v1"):
+        translate_checks([dict(base, min=1, assertion="lambda x: x >= 1")], DATASET)
+
+
+def test_translate_plan_rejects_mixed_semantic_versions():
+    checks = [
+        check(),
+        {
+            "alias": "d",
+            "constraint": "DistinctnessByGroup",
+            "columns": ["id"],
+            "group_by": ["g"],
+            "min": 1,
+        },
+    ]
+    with pytest.raises(ConfigurationError, match="mix"):
+        translate_plan(checks, DATASET)
 
 
 def test_translator_imports_without_optional_dependencies():
