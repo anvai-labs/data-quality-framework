@@ -206,9 +206,14 @@ averaged without weighting by row count. Only summaries cross this boundary.
 Capability declarations are promises, not proof. The built-in `dq.spark_adapter`
 advertises `counts/v1` for size and completeness and is verified against
 hand-computed fixtures covering nulls, NaN and infinities, decimals, empty
-inputs, case-sensitive columns, and repartitioning; differential certification
-against the legacy PyDeequ path is still pending, and snapshot digests remain
-caller-certified. `dq.portable_config` translates exactly representable HOCON
+inputs, case-sensitive columns, and repartitioning. A differential suite
+(`dq.tests.test_spark_adapter_differential`) runs the same rules through
+PyDeequ and the native adapter and pins the one intentional divergence:
+counts/v1 excludes floating-point NaN from present counts while Deequ's
+completeness counts it, so NaN-bearing columns can pass in PyDeequ and fail
+natively past thresholds between the two ratios. On empty inputs both engines
+fail completeness. Snapshot digests remain caller-certified.
+`dq.portable_config` translates exactly representable HOCON
 count rules and fails closed on everything else. Numeric ranges, uniqueness,
 schema, regex, clocks/timezones, durable admission and DataFusion remain
 outside this slice.

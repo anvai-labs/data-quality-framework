@@ -262,10 +262,13 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   representable HOCON subset (`isComplete`, single-comparison `hasCompleteness`,
   integer-comparison `hasSize`); every other constraint fails closed and stays on the
   legacy engine path, and callers must supply the snapshot digest that legacy
-  configuration lacks. Local validation: 329 full-suite tests passed on Python 3.13 with
-  both new modules at 100% line and branch coverage. This is not yet adapter
-  certification: `DatasetRef` digests are caller-certified, differential testing against
-  the legacy PyDeequ path is still planned, and no runtime selects this API automatically.
+  configuration lacks. Local validation: 334 full-suite tests passed on Python 3.13 with
+  both new modules at 100% line and branch coverage. Differential certification against
+  PyDeequ is now in place (`dq.tests.test_spark_adapter_differential`): sizes, nulls,
+  decimals, exact thresholds, and empty inputs agree engine-to-engine, and the one
+  intentional divergence is pinned - counts/v1 excludes floating-point NaN from present
+  counts while Deequ's completeness counts it. `DatasetRef` digests remain
+  caller-certified, and no runtime selects this API automatically.
   U3a is a compatibility boundary, not the full
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report
   enforce the new boundary. Great Expectations runtime compatibility is not certified by

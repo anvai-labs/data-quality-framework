@@ -24,11 +24,12 @@ semantic layer between rules and execution engines.
 Build an immutable, engine-neutral rule kernel and retain external systems as physical
 execution adapters. The accompanying dependency change targets PyDeequ 1.7 as the Spark 3.5
 adapter. The initial opt-in count-plan kernel is implemented in `dq.plan`; a native Spark
-adapter (`dq.spark_adapter`) executes the size/completeness subset, and
+adapter (`dq.spark_adapter`) executes the size/completeness subset with demonstrated
+counts/v1 parity against PyDeequ (differential suite covering sizes, nulls, decimals,
+empty inputs, exact thresholds, and the documented NaN divergence), and
 `dq.portable_config` translates exactly representable HOCON count rules. DataFusion and
-non-count-rule compilers, plus differential certification against the legacy PyDeequ
-path, remain planned. Adoption of the broader architecture remains proposed until adapter
-parity is demonstrated.
+non-count-rule compilers remain planned. Adoption of the broader architecture remains
+proposed until the wider rule subset reaches the same bar.
 
 image::../../png/engine-neutral-kernel.png[Engine-neutral rule kernel and execution adapters]
 
@@ -119,7 +120,7 @@ not an existing guarantee.
 |Capability |Initial implementation |Promotion gate
 |Size, completeness, numeric range
 |PyDeequ; native Spark for size/completeness (`dq.spark_adapter`)
-|Shared empty/null/NaN/decimal fixtures and one-scan plan checks; differential PyDeequ testing pending
+|Shared empty/null/NaN/decimal fixtures and one-scan plan checks; differential suite passing with the documented NaN divergence
 |Uniqueness and foreign keys
 |Existing Spark/Deequ paths
 |Explicit duplicate/null definitions; partition-invariant differential tests

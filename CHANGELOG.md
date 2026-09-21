@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   capabilities and ambiguous bindings before execution
 - Added a fail-closed HOCON translation subset (`dq.portable_config`) covering
   `isComplete`, single-comparison `hasCompleteness`, and integer-comparison `hasSize`
+- Added a differential certification suite running the same size and completeness
+  rules through PyDeequ and the native Spark adapter; decisions agree on nulls,
+  decimals, empty inputs, and exact thresholds, and the intentional NaN divergence
+  is pinned and documented
 - Added a bounded PyDeequ DQDL compatibility engine and executable example
 - Added ADR-002 for an engine-neutral rule and metric kernel with Spark, PyDeequ,
   Great Expectations, and Arrow/DataFusion adapters
