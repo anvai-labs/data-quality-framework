@@ -137,6 +137,24 @@ This is modernization unit U3a, not the portable rule/metric planner. Engine-own
 repository writes still precede validation and are not admission evidence. The
 framework does not yet provide a transactional PostgreSQL admission sink.
 
+## Portable count plans (opt-in core API)
+
+`dq.plan` defines frozen dataset/column references, rules, exact predicates,
+metric requests, capability declarations, and canonical execution plans. The
+first subset is size and completeness. Equivalent requests share metrics;
+unsupported capabilities fail before evaluation. This does not yet execute a
+DataFrame or translate existing HOCON/DQDL rules.
+
+From a source checkout, run the dependency-free demonstration:
+
+```bash
+python -m examples.portable_counts
+```
+
+It uses illustrative counts and a placeholder digest, not verified dataset
+evidence. See the [portable semantics contract](docs/index.adoc)
+before implementing an adapter. Existing engine configuration remains unchanged.
+
 ## Supported Engines
 
 | Engine | Description | Use Case |

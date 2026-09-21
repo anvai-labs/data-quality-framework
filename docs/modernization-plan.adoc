@@ -227,7 +227,7 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   Local validation: 197 full-suite tests passed before the final negative fixtures; 29 focused
   package/validator tests passed afterward, with 100% coverage of changed production lines.
   PR checks are the authority for Python 3.12/3.13 and Java 17 certification.
-* U3a: implemented on the typed-outcome branch; pending PR certification. A frozen
+* U3a: merged in PR 34; PR and post-merge CI passed on Python 3.12/3.13. A frozen
   `CheckOutcome` snapshot centralizes strict JSON/boolean validation, prevents mutable
   aliases, bounds summary count/depth/nodes/bytes, and preserves valid v2 extension fields.
   The facade and report builder share that boundary. Spark summary Rows become named
@@ -242,9 +242,17 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   subprocesses have a thirty-second timeout. These diagnostics do not assert a root cause.
   Collection inspection found a generated test ID of 1,048,642 characters from a large
   string fixture. Explicit short IDs prevent this fixture from flooding verbose CI logs;
-  local quiet output had hidden that problem. Retry certification is still required.
-* U3b: planned: typed dataset/rule/metric identities, execution plans, capability contracts,
-  and adapter-specific semantic equivalence. U3a is a compatibility boundary, not the full
+  local quiet output had hidden that problem. The corrected matrix passed all 238 tests.
+* U3b core: implemented in `dq.plan` (size/completeness only). Typed snapshot/column references,
+  count metrics, size/completeness rules, exact Decimal predicates, canonical cached plan
+  digests, metric deduplication and capability checks are opt-in and engine-independent.
+  The pull request/CI record is the certification authority. No existing runtime selects this
+  API automatically. The executable example deliberately uses fixture counts, not real data.
+  Local validation: 284 full-suite tests passed, including 46 new core/example contracts;
+  the plan module has 100% line and branch coverage. No new engine dependency is required.
+* U3b integration: planned: HOCON translation and adapter-specific semantic equivalence.
+  A native Spark count adapter must prove counts/v1 before any backend is certified.
+  U3a is a compatibility boundary, not the full
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report
   enforce the new boundary. Great Expectations runtime compatibility is not certified by
   the current Spark suite; its existing integration tests are disabled.
