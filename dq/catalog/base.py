@@ -6,6 +6,8 @@
 from abc import ABC, abstractmethod
 import logging
 
+from dq.identifiers import qualified_table_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,7 +75,7 @@ class CatalogProvider(ABC):
         raise NotImplementedError
 
     def _build_full_table_name(self, table, database=None, catalog=None):
-        """Build a fully-qualified table name from components.
+        """Build a fully-qualified table name from validated components.
 
         Args:
             table: Table name.
@@ -82,11 +84,8 @@ class CatalogProvider(ABC):
 
         Returns:
             Fully-qualified table name string.
+
+        Raises:
+            IdentifierError: If any component is malformed (TD-ARCH-2/U4).
         """
-        parts = []
-        if catalog and catalog.strip():
-            parts.append(catalog.strip())
-        if database and database.strip():
-            parts.append(database.strip())
-        parts.append(table.strip())
-        return ".".join(parts)
+        return qualified_table_name(table, database=database, catalog=catalog)

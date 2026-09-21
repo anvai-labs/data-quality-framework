@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Centralized table, column, and catalog identifiers into validated value objects
+  (`dq.identifiers`) used at every catalog and SQL boundary; malformed or injected
+  identifiers fail closed before any Spark call, and Unity catalog SQL statements
+  use quoted names (TD-ARCH-2)
+
 ## [2.2.0] - 2026-09-21
 
 ### Added

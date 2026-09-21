@@ -4,7 +4,6 @@
 """Main orchestrator for the Data Quality Framework."""
 
 import logging
-import re
 import time
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -15,14 +14,10 @@ from dq.engine.engine_loader import EngineLoader
 from dq.utils import config_utils, constants
 from dq.catalog.catalog_factory import CatalogFactory
 from dq.exceptions import ConfigurationError, DataFrameNotFoundError, ValidationError
+from dq.identifiers import IdentifierError, TableName
 from dq.outcomes import MAX_BATCH_BYTES, MAX_OUTCOMES, CheckOutcome, normalize_outcomes
 
 logger = logging.getLogger(__name__)
-
-# Pattern for valid Spark/Hive/Unity table identifiers
-_TABLE_NAME_PATTERN = re.compile(
-    r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}$"
-)
 
 
 class DQFramework:
@@ -261,8 +256,12 @@ class DQFramework:
         elif df_name in self.dataframes:
             return self.dataframes[df_name]
         elif df_name in [t.name for t in self._spark.catalog.listTables()]:
-            if not _TABLE_NAME_PATTERN.match(df_name):
-                raise DataFrameNotFoundError(f"Invalid table name format: '{df_name}'")
+            try:
+                TableName.parse(df_name)
+            except IdentifierError as error:
+                raise DataFrameNotFoundError(
+                    f"Invalid table name format: '{df_name}'"
+                ) from error
             return self._spark.table(df_name)
         else:
             # Try the catalog provider as last resort

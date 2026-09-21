@@ -12,7 +12,6 @@ summary, never what they return (ADR-003).
 """
 
 import logging
-import re
 from typing import List, Tuple
 
 import pyspark.sql.functions as F
@@ -20,15 +19,11 @@ from pyspark.sql import DataFrame
 from pyspark.sql.window import Window
 
 from dq.exceptions import ConfigurationError
+from dq.identifiers import ColumnName, IdentifierError, TableName
 
 logger = logging.getLogger(__name__)
 
 _ENTITY = "MultiColumn"
-
-# Same shape as the orchestrator's table-name fallback (TD-ARCH-2); U4
-# centralizes both behind one identifier value object.
-_TABLE_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*){0,2}$")
-_COLUMN_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def metric_row(instance: str, dimension: str, value: int) -> list:
@@ -307,21 +302,16 @@ class ColumnNamesInReferenceTableStrategy:
         source="timeSeries",
     ) -> Tuple[List[list], List[list]]:
         logger.debug("Running LookupBasedOnColumnNameList constraint")
-        if type(ref_table) is not str or not _TABLE_PATTERN.match(ref_table):
-            raise ConfigurationError(
-                "ColumnNamesInReferenceTable ref_table must be a one-to-three "
-                f"part alphanumeric identifier, not {ref_table!r}"
-            )
-        if type(ref_columns) is not str or not _COLUMN_PATTERN.match(ref_columns):
-            raise ConfigurationError(
-                "ColumnNamesInReferenceTable ref_columns must be a single "
-                f"alphanumeric identifier, not {ref_columns!r}"
-            )
+        try:
+            reference_table = TableName.parse(ref_table, label="ref_table")
+            reference_column = ColumnName.parse(ref_columns, label="ref_columns")
+        except IdentifierError as error:
+            raise ConfigurationError(str(error)) from error
         if ignore_columns and len(ignore_columns) > 0:
             for col in ignore_columns:
                 dataframe = dataframe.drop(col)
         reference = dataframe.sparkSession.sql(
-            "Select " + ref_columns + " from " + ref_table
+            f"Select {reference_column.quoted} from {reference_table.quoted}"
         )
         reference_values = reference.select(
             F.coalesce(F.col(ref_columns).cast("string"), F.lit("None")).alias(

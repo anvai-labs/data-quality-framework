@@ -22,6 +22,7 @@ from pyspark.sql.types import (
     TimestampNTZType,
 )
 import json, re
+from dq.identifiers import ColumnName, TableName
 from dq.utils import constants
 
 
@@ -64,8 +65,14 @@ class SchemavalidationCheck:
         cache_key = f"{full_tablename}.{ref_column}"
         if cache_key not in self._ref_cache:
             # Only calculate if cache key is missing
+            reference_table = TableName.parse(
+                full_tablename, label="reference table name"
+            )
+            reference_column = ColumnName.parse(ref_column, label="ref_column")
+            alias = ColumnName.parse(f"{ref_column}_alias", label="reference alias")
             ref_df = self._spark_session.sql(
-                f"SELECT {ref_column} AS {ref_column}_alias FROM {full_tablename}"
+                f"SELECT {reference_column.quoted} AS {alias.quoted} "
+                f"FROM {reference_table.quoted}"
             )
             distinct_count = ref_df.distinct().count()
             if use_list_check and distinct_count > threshold_list_count:

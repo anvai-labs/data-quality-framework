@@ -6,6 +6,7 @@
 import logging
 
 from dq.catalog.base import CatalogProvider
+from dq.identifiers import TableName, qualified_table_name
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +330,7 @@ class GlueCatalogProvider(CatalogProvider):
         return StructType(fields)
 
     def _resolve_table_name(self, table_reference, database=None):
-        """Resolve table reference to database.table format.
+        """Resolve table reference to a validated database.table string.
 
         Args:
             table_reference: Table name or database.table.
@@ -337,16 +338,16 @@ class GlueCatalogProvider(CatalogProvider):
 
         Returns:
             Fully-qualified database.table string.
+
+        Raises:
+            IdentifierError: If the reference or database is malformed.
         """
-        parts = table_reference.split(".")
-        if len(parts) == 2:
-            return table_reference
-        elif database:
-            return f"{database}.{table_reference}"
-        return table_reference
+        return qualified_table_name(
+            table_reference, database=database, label="glue table name", max_parts=2
+        )
 
     def _split_table_reference(self, table_reference, database=None):
-        """Split a table reference into (database, table) tuple.
+        """Split a validated table reference into (database, table).
 
         Args:
             table_reference: Table name or database.table.
@@ -354,11 +355,13 @@ class GlueCatalogProvider(CatalogProvider):
 
         Returns:
             Tuple of (database_name, table_name).
+
+        Raises:
+            IdentifierError: If the reference is malformed.
         """
-        parts = table_reference.split(".")
-        if len(parts) == 2:
-            return parts[0], parts[1]
-        elif database:
-            return database, table_reference
-        else:
-            return "default", table_reference
+        table = TableName.parse(table_reference, label="glue table name", max_parts=2)
+        if len(table.parts) == 2:
+            return table.parts[0], table.parts[1]
+        if database:
+            return database, table.parts[0]
+        return "default", table.parts[0]

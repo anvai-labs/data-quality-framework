@@ -88,6 +88,8 @@ become executable Python instead of declarative input.
 |Table and column identifiers are validated in only one orchestrator fallback. Unity,
 schema, repository, and custom-engine SQL paths interpolate identifiers independently.
 |One validated identifier value object and quoting policy used at every catalog/SQL boundary.
+*Implemented 2026-09-21 (`dq.identifiers`); Unity DESCRIBE/SHOW/USE statements now use
+quoted validated names and provider behavior is characterized with fake Spark sessions.*
 
 |TD-ARCH-3
 |P0
@@ -292,9 +294,17 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   strategy objects behind the `CustomEngine` facade with reference identifiers validated
   before SQL, and its constraint surface is frozen as a first-class adapter contract
   (ADR-003).
-* U4, U6, U7: planned. ADR-002 extends U3 with portable rule/metric models; the
+* U4: implemented. `dq.identifiers` provides the validated `TableName` and
+  `ColumnName` value objects (bounded parts, one-to-three part table names,
+  backtick-quoted SQL rendering) and every catalog/SQL boundary now parses
+  through them: the orchestrator fallback, all three catalog providers,
+  Unity DESCRIBE/SHOW/USE statements, the schema-validation foreign-key
+  reference query, the custom-engine reference lookup, and repository table
+  names. Injection and malformed identifier fixtures fail before any Spark
+  call, and provider behavior is characterized with fake Spark sessions.
+* U6, U7: planned. ADR-002 extends U3 with portable rule/metric models; the
   groups/v1 kernel, native Spark execution, and DistinctnessByGroup translation
-  landed under ADR-004. Centralized identifiers (U4), outcome sinks (U6), and
+  landed under ADR-004. Outcome sinks (U6) and
   test consolidation (U7) follow as separate changes. No backend migration is
   enabled by this dependency upgrade.
 

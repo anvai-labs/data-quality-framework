@@ -5,6 +5,9 @@ from pyspark.sql import functions as F
 import datetime
 from pydeequ.repository import ResultKey
 
+from dq.exceptions import ConfigurationError
+from dq.identifiers import TableName
+
 
 def save_to_repository(
     repoconfig, df, metric_type_suffix, resultkey_current_time_to_millis
@@ -60,6 +63,12 @@ def save_to_repository(
                 if table is None:
                     raise ValueError("Table name is not provided in the configuration.")
                 else:
+                    table_name = TableName.parse(table, label="repository table")
+                    if len(table_name.parts) != 2:
+                        raise ConfigurationError(
+                            f"repository table {table!r} must be two-part "
+                            "(database.table)"
+                        )
                     tablewithsuffix = table + "_" + metric_type_suffix
                     dbname, tabname = tablewithsuffix.split(".")
                     doesTableExistAlready = (

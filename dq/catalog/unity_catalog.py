@@ -6,6 +6,7 @@
 import logging
 
 from dq.catalog.base import CatalogProvider
+from dq.identifiers import ColumnName, TableName
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +89,9 @@ class UnityCatalogProvider(CatalogProvider):
             bool.
         """
         full_name = self._resolve_table_name(table_reference, database, catalog)
+        table = TableName.parse(full_name, label="unity table name")
         try:
-            self._spark.sql(f"DESCRIBE TABLE {full_name}")
+            self._spark.sql(f"DESCRIBE TABLE {table.quoted}")
             return True
         except Exception as e:
             logger.debug("Table %s not found in Unity Catalog: %s", full_name, e)
@@ -105,7 +107,8 @@ class UnityCatalogProvider(CatalogProvider):
             List of schema names.
         """
         if catalog_name:
-            rows = self._spark.sql(f"SHOW SCHEMAS IN {catalog_name}").collect()
+            catalog = ColumnName.parse(catalog_name, label="catalog name")
+            rows = self._spark.sql(f"SHOW SCHEMAS IN {catalog.quoted}").collect()
         else:
             rows = self._spark.sql("SHOW SCHEMAS").collect()
         return [row[0] for row in rows]
@@ -120,8 +123,15 @@ class UnityCatalogProvider(CatalogProvider):
         Returns:
             List of table names.
         """
-        full_schema = f"{catalog_name}.{schema_name}" if catalog_name else schema_name
-        rows = self._spark.sql(f"SHOW TABLES IN {full_schema}").collect()
+        if catalog_name:
+            schema = TableName.parse(
+                f"{catalog_name}.{schema_name}", label="unity schema name"
+            )
+        else:
+            schema = TableName.parse(
+                schema_name, label="unity schema name", max_parts=2
+            )
+        rows = self._spark.sql(f"SHOW TABLES IN {schema.quoted}").collect()
         return [row["tableName"] for row in rows]
 
     def set_current_catalog(self, catalog_name):
@@ -130,7 +140,8 @@ class UnityCatalogProvider(CatalogProvider):
         Args:
             catalog_name: Name of the catalog to activate.
         """
-        self._spark.sql(f"USE CATALOG {catalog_name}")
+        catalog = ColumnName.parse(catalog_name, label="catalog name")
+        self._spark.sql(f"USE CATALOG {catalog.quoted}")
         logger.info("Switched to Unity Catalog: %s", catalog_name)
 
     def _resolve_table_name(self, table_reference, database=None, catalog=None):
@@ -151,12 +162,14 @@ class UnityCatalogProvider(CatalogProvider):
         parts = table_reference.split(".")
         if len(parts) == 3:
             # Already fully qualified: catalog.schema.table
-            return table_reference
+            return str(TableName.parse(table_reference, label="unity table name"))
         elif len(parts) == 2:
             # schema.table - prepend catalog if provided
             if catalog:
-                return f"{catalog}.{table_reference}"
-            return table_reference
+                catalog_part = ColumnName.parse(catalog, label="catalog name")
+                table = TableName.parse(table_reference, label="unity table name")
+                return f"{catalog_part}.{table}"
+            return str(TableName.parse(table_reference, label="unity table name"))
         else:
             # Just table name - build from components
             return self._build_full_table_name(table_reference, database, catalog)
