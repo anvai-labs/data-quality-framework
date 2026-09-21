@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added a native Spark adapter (`dq.spark_adapter`) that executes portable size and
+  completeness plans through one shared aggregate per dataset, rejecting unsupported
+  capabilities and ambiguous bindings before execution
+- Added a fail-closed HOCON translation subset (`dq.portable_config`) covering
+  `isComplete`, single-comparison `hasCompleteness`, and integer-comparison `hasSize`
 - Added a bounded PyDeequ DQDL compatibility engine and executable example
 - Added ADR-002 for an engine-neutral rule and metric kernel with Spark, PyDeequ,
   Great Expectations, and Arrow/DataFusion adapters

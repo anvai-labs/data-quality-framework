@@ -250,15 +250,29 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   API automatically. The executable example deliberately uses fixture counts, not real data.
   Local validation: 284 full-suite tests passed, including 46 new core/example contracts;
   the plan module has 100% line and branch coverage. No new engine dependency is required.
-* U3b integration: planned: HOCON translation and adapter-specific semantic equivalence.
-  A native Spark count adapter must prove counts/v1 before any backend is certified.
+* U3b integration: implemented for size and completeness. `dq.spark_adapter` executes
+  portable count plans natively on Spark: capabilities and bindings are validated before
+  any job, all metrics for a dataset are computed in one shared aggregate action with the
+  driver receiving a single aggregate row per dataset, columns resolve only on exact
+  case-sensitive matches (duplicate or case-insensitive colliding fields are refused),
+  and results are hand-computed fixture expectations rather than PyDeequ comparisons.
+  Counts/v1 semantics hold on Spark: null and NaN are not present, empty strings and
+  string "NaN" are present, infinity stays present, decimals skip NaN handling, and
+  completeness fails on empty input. `dq.portable_config` translates only the exactly
+  representable HOCON subset (`isComplete`, single-comparison `hasCompleteness`,
+  integer-comparison `hasSize`); every other constraint fails closed and stays on the
+  legacy engine path, and callers must supply the snapshot digest that legacy
+  configuration lacks. Local validation: 329 full-suite tests passed on Python 3.13 with
+  both new modules at 100% line and branch coverage. This is not yet adapter
+  certification: `DatasetRef` digests are caller-certified, differential testing against
+  the legacy PyDeequ path is still planned, and no runtime selects this API automatically.
   U3a is a compatibility boundary, not the full
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report
   enforce the new boundary. Great Expectations runtime compatibility is not certified by
   the current Spark suite; its existing integration tests are disabled.
-* U4-U7: planned. ADR-002 extends U3 with portable rule/metric models; native Spark parity and
-  Arrow/DataFusion follow as separate changes after the core contract lands. No backend migration
-  is enabled by this dependency upgrade.
+* U4-U7: planned. ADR-002 extends U3 with portable rule/metric models; native Spark
+  uniqueness/range parity and Arrow/DataFusion follow as separate changes after the
+  count adapter lands. No backend migration is enabled by this dependency upgrade.
 
 U3a limits are 10,000 outcomes, 1 MiB per encoded outcome, 16 MiB across one batch/run,
 10,000 diagnostic nodes per outcome, and nesting depth 16. Limits reject rather than truncate.

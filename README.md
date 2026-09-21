@@ -142,17 +142,31 @@ framework does not yet provide a transactional PostgreSQL admission sink.
 `dq.plan` defines frozen dataset/column references, rules, exact predicates,
 metric requests, capability declarations, and canonical execution plans. The
 first subset is size and completeness. Equivalent requests share metrics;
-unsupported capabilities fail before evaluation. This does not yet execute a
-DataFrame or translate existing HOCON/DQDL rules.
+unsupported capabilities fail before evaluation. Existing HOCON/DQDL rules are
+not translated automatically.
 
-From a source checkout, run the dependency-free demonstration:
+`dq.spark_adapter` executes such plans natively on Spark for size and
+completeness. It validates capabilities and bindings first, computes every
+required metric for a dataset in one shared aggregate action, returns only
+bounded outcome snapshots, and follows counts/v1 semantics: present counts
+exclude null and floating-point NaN, keep empty strings and string "NaN",
+and completeness fails on an empty dataset. Column and dataset bindings must
+match exactly (case-sensitively) or execution is refused before any Spark job.
+`dq.portable_config` translates only the exactly representable HOCON subset
+(`isComplete`, single-comparison `hasCompleteness`, integer-comparison
+`hasSize`); every other constraint fails closed and stays on the legacy engine
+path.
+
+From a source checkout, run the dependency-free kernel demonstration:
 
 ```bash
 python -m examples.portable_counts
 ```
 
 It uses illustrative counts and a placeholder digest, not verified dataset
-evidence. See the [portable semantics contract](docs/index.adoc)
+evidence. With the `spark` extra installed, `python -m
+examples.portable_spark_counts` runs a translated HOCON subset against a local
+Spark DataFrame. See the [portable semantics contract](docs/index.adoc)
 before implementing an adapter. Existing engine configuration remains unchanged.
 
 ## Supported Engines

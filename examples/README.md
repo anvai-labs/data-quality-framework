@@ -15,6 +15,8 @@ This directory contains example configurations and scripts demonstrating how to 
 ## Sample Scripts
 
 - `sample_spark_job.py` - Complete working example with a local Spark session
+- `portable_counts.py` - Dependency-free portable count-plan demonstration using fixture counts
+- `portable_spark_counts.py` - Native Spark execution of a translated HOCON count-plan subset
 
 ## Running Examples
 
@@ -39,4 +41,7 @@ structure; catalog examples still require the named tables, credentials, and com
 
 CI parses every checked-in `.conf` file with the same structural validator used by
 `dq-validate`. DQDL provides compatibility for existing Deequ rulesets; portable typed
-rules will be introduced through the engine-neutral kernel described in ADR-002.
+rules are introduced through the engine-neutral kernel described in ADR-002. The
+portable path currently covers size and completeness only (`dq.plan`,
+`dq.spark_adapter`, and the HOCON subset translator `dq.portable_config`); other
+constraints keep using their existing engines and fail closed on translation.
