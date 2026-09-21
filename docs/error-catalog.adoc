@@ -6,7 +6,7 @@ Status: Maintained by contract test (U7/TD-PROD-5) +
 Date: 2026-09-21
 
 This catalog maps every fail-closed boundary to its cause and remediation.
-The framework raises 151 raise sites across the modules below; the contract
+The framework raises 154 raise sites across the modules below; the contract
 test `dq/tests/test_error_catalog.py` keeps module coverage and exception
 types in sync with the code. Spec: SPEC-004.
 
@@ -163,6 +163,15 @@ the evidence store refused an unsafe write.
 * Cause: engine names must be lowercase alphanumeric with optional
   underscores.
 * Fix: rename the engine or its module to match the loader convention.
+
+== dq/envelope.py
+
+*Content:* 1 `ConfigurationError` site.
+
+* Cause: envelope plans have mismatched dataset snapshot digests or the
+  plans tuple is empty or contains non-ExecutionPlan objects.
+* Fix: ensure all plans share the same dataset snapshot and are valid
+  ExecutionPlan instances.
 
 == dq/identifiers.py
 
