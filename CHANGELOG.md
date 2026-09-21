@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one bounded summary per column instead of collecting per-group or per-row rows to
   the driver; zero and null baselines are reported as skipped pairs instead of
   crashing, and the logging-only count action was removed
+- Split the custom engine into four stateless constraint strategy objects behind the
+  `CustomEngine` facade, froze its constraint surface as a permanent adapter contract
+  (ADR-003), and added fail-closed validation of reference table and column
+  identifiers before Spark SQL is built
 - Replaced domain-specific test fixture vocabulary with neutral structural names
 - Upgraded PyDeequ from 1.6.0 to 1.7.0 and the Spark 3.5 Deequ JAR from 2.0.8
   to 2.0.21; CI now uses Java 17 for Spark integration

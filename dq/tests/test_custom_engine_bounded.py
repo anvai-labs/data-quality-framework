@@ -21,6 +21,11 @@ from pyspark.sql.types import (
 )
 
 from dq.engine.custom.custom_engine import CustomEngine
+from dq.engine.custom.strategies import (
+    DistinctnessByGroupStrategy,
+    RateOfChangeStrategy,
+)
+from dq.exceptions import ConfigurationError
 
 _GROUPS_DATA = [
     ("east", "a", 1.0),
@@ -221,9 +226,8 @@ def test_rate_of_change_passing_ranges_report_success(spark):
 
 def test_rate_of_change_zero_denominator_does_not_crash(spark):
     frame = spark.createDataFrame(_RATE_DATA, _RATE_SCHEMA)
-    engine = CustomEngine(rate_of_change_config(["v"], ["grp"], "day", None, 150))
-    metric_results, verifications = engine._check_rate_of_change(
-        "Compliance", "RateOfChange", frame, ["v"], ["grp"], "day", None, 150
+    metric_results, verifications = RateOfChangeStrategy().apply(
+        frame, "Compliance", "Error", ["v"], ["grp"], "day", None, 150
     )
     assert metric_results[0][3] == 1, "no pair may violate max 150"
     message = verifications[0][5]
@@ -335,14 +339,40 @@ def test_apply_fails_closed_on_unsupported_constraints(spark):
 
 def test_distinctness_reports_groups_above_the_maximum(spark):
     frame = spark.createDataFrame(_GROUPS_DATA, _GROUPS_SCHEMA)
-    engine = CustomEngine(distinctness_config(["id"], ["region"], None, 1))
-    metric_results, verifications = engine._check_distinctness_by_group(
-        "Compliance", "DistinctnessByGroup", frame, ["id"], ["region"], None, 1
+    metric_results, verifications = DistinctnessByGroupStrategy().apply(
+        frame, "Compliance", "Error", ["id"], ["region"], None, 1
     )
     assert metric_results[0][3] == 0, "east and west have more than 1 distinct id"
     message = verifications[0][5]
     assert "above the threshold - 1" in message
     assert "2 of 3 groups" in message
+
+
+def test_lookup_rejects_unsafe_reference_table_identifiers(spark):
+    frame = spark.createDataFrame([("a", 1)], ["item_id", "qty"])
+    config = lookup_config("lookup_ref; drop table sensitive")
+    with pytest.raises(ConfigurationError, match="ref_table"):
+        CustomEngine(config).apply(frame)
+
+
+def test_lookup_rejects_non_identifier_reference_columns(spark):
+    frame = spark.createDataFrame([("a", 1)], ["item_id", "qty"])
+    config = lookup_config("lookup_ref_filled", ref_columns="item_id; drop")
+    with pytest.raises(ConfigurationError, match="ref_columns"):
+        CustomEngine(config).apply(frame)
+
+
+def test_lookup_rejects_missing_reference_identifiers(spark):
+    frame = spark.createDataFrame([("a", 1)], ["item_id", "qty"])
+    config = ConfigFactory.parse_string("""
+        sync { checks = [ {
+            constraint_name = "ref_lookup"
+            constraint = "LookupBasedOnColumnNameList"
+            level = "Warning"
+        } ] }
+        """).get("sync", {})
+    with pytest.raises(ConfigurationError, match="ref_table"):
+        CustomEngine(config).apply(frame)
 
 
 def test_negative_values_constraint_reports_failing_and_non_numeric_columns(spark):

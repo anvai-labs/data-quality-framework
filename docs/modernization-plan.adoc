@@ -137,7 +137,8 @@ supported engine capability.
 |Large schema/custom check classes mix rule parsing, Spark planning, execution, and formatting;
 tests repeat manual success loops and diagnostic printing.
 |Constraint strategy objects, shared outcome assertions/fixtures, and focused unit versus
-Spark integration markers.
+Spark integration markers. *Constraint strategy objects implemented 2026-09-20 for the
+custom engine (ADR-003); shared fixtures and markers remain U7.*
 
 |TD-ARCH-10
 |P1
@@ -270,7 +271,10 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   value 0 for rate of change) and all metric/verification string shapes are
   preserved. Local validation: 305 full-suite tests passed on Python 3.13; changed
   lines in the custom engine exceed the 90 percent diff-cover gate. Scheduled scale
-  benchmarks remain manual per the CI cost policy.
+  benchmarks remain manual per the CI cost policy. The engine is now four stateless
+  strategy objects behind the `CustomEngine` facade with reference identifiers validated
+  before SQL, and its constraint surface is frozen as a first-class adapter contract
+  (ADR-003).
 * U4, U6, U7: planned. ADR-002 extends U3 with portable rule/metric models; native Spark parity and
   Arrow/DataFusion follow as separate changes after the core contract lands. No backend migration
   is enabled by this dependency upgrade.

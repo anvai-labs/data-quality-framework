@@ -316,6 +316,7 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:modernization-plan.adoc[Active architecture modernization plan]
 * link:decisions/adr/ADR-001-incremental-typed-execution-kernel.adoc[ADR-001: typed execution kernel]
 * link:decisions/adr/ADR-002-engine-neutral-rule-kernel.adoc[ADR-002: engine-neutral rule kernel]
+* link:decisions/adr/ADR-003-custom-constraint-adapter.adoc[ADR-003: custom constraint adapter]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]
