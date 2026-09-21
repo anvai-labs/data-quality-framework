@@ -1,0 +1,61 @@
+= ADR-008: Gate-event notifier port
+:toc:
+:sectlinks.
+
+Status: Proposed (SPEC-002 defines the buildable contract; implementation is
+the next engineering unit) +
+Date: 2026-09-21
+
+== Context
+
+Runs produce evidence (ADR-006) and outcomes pass the immutable boundary, but
+nothing tells a human or a downstream system when a gate opens or closes.
+Consumers today must poll reports. Marketplace-grade quality products treat
+alerting as a first-class surface — and TD-PROD-2 calls for it. The design
+question is where notification lives and what its failure policy is, without
+coupling the kernel or engines to any delivery channel.
+
+== Decision
+
+Introduce a `GateNotifier` port, separate from `OutcomeSink` (a sink
+persists evidence; a notifier announces gate events — one consumer, one
+reason to change each).
+
+* `GateEvent` value object: run key, dataset, status (`passed`/`failed`),
+  failing check identities (from the validated `dq-report/v1` shape),
+  report reference, and timestamp. Built by the facade from the same
+  normalized outcomes the report embeds.
+* `GateNotifier.notify(event)` is the single port method. Adapters:
+  `LoggingNotifier` (default, always succeeds), `WebhookNotifier` (JSON POST
+  with three attempts and exponential backoff), and a fake for tests.
+* Emission point: the facade emits one event per run after the run scope
+  commits and outcomes are normalized — notification never joins the
+  durability transaction and a notifier failure is logged, never propagated
+  (fail-open). Evidence durability is never held hostage to delivery.
+* Notifiers are injected configuration (`notifiers = [webhook, ...]`),
+  resolved through a registry dispatch mirroring the catalog/sink idiom;
+  unknown notifier types fail closed.
+
+== Consequences
+
+Notification failures cannot mask gate results or break runs, at the cost of
+at-most-once delivery for the webhook adapter — consumers needing
+stronger guarantees subscribe to the durable evidence store (ADR-006) rather
+than the notifier. The port stays one method wide; batching, templating, and
+channel-specific options belong to adapters.
+
+== Rejected alternatives
+
+* Notification inside the sink port: couples evidence durability to delivery
+  and breaks Interface Segregation.
+* Poll-only (status quo): consumers cannot react within the run window.
+* Synchronous e-mail as the first adapter: slow, credential-heavy, and
+  untestable without infrastructure; webhooks cover chat/ops tooling.
+
+== Acceptance gates
+
+* A fake notifier records exactly one event per run with the correct gate
+  status and failing-check identities.
+* A failing webhook is retried with backoff and logged, and the run still
+  returns its outcomes normally.
+* The default `LoggingNotifier` emits a structured line per run.

@@ -1,0 +1,49 @@
+= SPEC-003: Release signing, SBOM, and provenance
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: TD-PROD-1, ADR-007 (MVP-1); satisfies AWS Marketplace security-
+review expectations (vuln-free artifacts, supply-chain attestations).
+
+== Purpose
+
+Every release must carry verifiable supply-chain evidence: consumers and
+marketplace reviewers can prove what was built, from what source, and that
+nobody tampered with it in transit.
+
+== In scope
+
+`release.yml` gains, between build and publish:
+
+. **SBOM**: CycloneDX JSON for the built wheel (via `cyclonedx-py`), uploaded
+  beside the distribution.
+. **Provenance**: GitHub Actions artifact attestation (`actions/attest`) —
+  OIDC-based, tying artifacts to this repository and workflow.
+. **Signature**: sigstore keyless signing of the wheel, sdist, and SBOM
+  (`.sigstore` bundles) — no long-lived keys.
+. **Verify step**: a job step that verifies signature + attestation before
+  publishing, so a broken pipeline fails closed.
+
+== Out of scope
+
+* Container image signing (follows when the container exists).
+* Private registries or mirrors.
+
+== Contracts
+
+* Artifacts per release: wheel, sdist, `*.cdx.json` (SBOM), `*.sigstore`
+  bundles, provenance attestation — all attached to the GitHub release.
+* Verification command documented in the release notes
+  (`gh attestation verify` / `cosign verify-blob`).
+* No new framework runtime dependency; tooling is workflow-scoped.
+
+== Acceptance gates
+
+* A release run produces signed artifacts with attestations verifiable via
+  the documented commands.
+* A tampered artifact fails the verify step (negative test executed once
+  during rollout and recorded in the run log).
+
+Links: TD-PROD-1; ADR-007 (MVP-1).

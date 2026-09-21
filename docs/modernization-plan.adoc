@@ -155,7 +155,8 @@ Arrow/DataFusion adapter. Retain vendor adapters for rules that cannot be transl
 |Releases ship from source without signatures, SBOMs, or marketplace-grade
 packaging; no container image or listing assets exist.
 |Signed wheels, SBOM, provenance attestation, container image, and listing
-assets per marketplace security review (ADR-007, MVP-1).
+assets per marketplace security review (ADR-007, MVP-1). Spec:
+SPEC-003.
 
 |TD-PROD-2
 |P1
@@ -163,7 +164,7 @@ assets per marketplace security review (ADR-007, MVP-1).
 reports.
 |A notifier port beside the sink (webhook/e-mail adapters, fake first) that
 emits gate events from run scope commits, with incident records in the
-evidence store (ADR-007, MVP-1).
+evidence store (ADR-007, MVP-1). Spec: SPEC-002 and ADR-008.
 
 |TD-PROD-3
 |P2
@@ -177,14 +178,15 @@ metrics inside the kernel (ADR-007, MVP-2; co-design before build).
 |The evidence plane is single-tenant: one namespace, no API keys, no RBAC,
 no retention configuration.
 |A multi-tenant control plane over the evidence store - namespaces, keys,
-RBAC, retention - with negative isolation tests (ADR-007, MVP-2).
+RBAC, retention - with negative isolation tests (ADR-007, MVP-2). Outline:
+SPEC-005.
 
 |TD-PROD-5
 |P2
 |Onboarding requires reading ADRs; no quickstart, error-message catalog, or
 compatibility matrix for downstream consumers.
 |Quickstart, error catalog, and a published compatibility matrix
-(ADR-007, MVP-1).
+(ADR-007, MVP-1). Spec: SPEC-004 with the enforcing contract test.
 |===
 
 == Target architecture

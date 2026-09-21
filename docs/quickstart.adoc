@@ -1,0 +1,70 @@
+= Quickstart
+:toc:
+:sectlinks.
+
+Five minutes from install to evidence. Failures at any step link to the
+link:error-catalog.adoc[error catalog].
+
+== 1. Install
+
+[source,shell]
+----
+pip install 'data-quality-framework[spark,deequ]'
+----
+
+Requires Python 3.12/3.13, Java 17, and a Spark 3.5.9 runtime.
+
+== 2. Define rules
+
+[source,hocon]
+----
+dqframework {
+  dqrules = [
+    {
+      name = "my_rules"
+      engine = "deequ"
+      dataframes = ["default"]
+      checks = [
+        { constraint_name = "id_complete", constraint = "isComplete", column = "id", level = "Error" }
+      ]
+    }
+  ]
+}
+----
+
+Portable alternative: the counts/v1, groups/v1, and ranges/v1 subsets
+translate from `isComplete`, `hasCompleteness`, `hasSize`,
+`DistinctnessByGroup`, `isNonNegative`, and `isInRange` — see
+link:specs/SPEC-004-error-catalog-and-quickstart.adoc[the compatibility
+notes] and ADR-005.
+
+== 3. Run
+
+[source,python]
+----
+from dq.dq_framework import DQFramework
+
+results = DQFramework(spark, config, default_dataframe=df).run()
+----
+
+== 4. Read evidence
+
+Each result carries `check`, `success`, and bounded `details`; `build_report`
+binds them to dataset and rule-set digests as `dq-report/v1`.
+
+== 5. Persist durably
+
+Add `repository { type = "postgres", schema = "dq" }` and export
+`DQ_POSTGRES_DSN`. Provision the evidence schema with `ddl_statements()`
+(ADR-006). Gate events reach your notifiers (ADR-008).
+
+== Compatibility matrix
+
+|===
+|Component |Tested versions
+|Python |3.12, 3.13
+|Spark |3.5.9
+|PyDeequ |1.7.0
+|Deequ JAR |2.0.21-spark-3.5
+|Java |17
+|===

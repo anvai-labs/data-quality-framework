@@ -1,0 +1,55 @@
+= SPEC-002: Gate-event notifier
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: TD-PROD-2, ADR-008
+
+== Purpose
+
+Specify the `GateNotifier` port, the `GateEvent` schema, and the delivery
+policy so that gate events reach humans and systems without ever altering a
+run's outcome.
+
+== In scope
+
+* `GateEvent`: `run_key`, `dataset`, `status` (`passed`/`failed`), `failed`
+  (list of failing check identities), `report` (optional `dq-report/v1`
+  document reference), `ts` (millis), `job_id`.
+* Port: `GateNotifier.notify(event) -> None`. Registry dispatch by
+  configured `type`, mirroring the catalog/sink idiom; unknown types fail
+  closed at configuration time.
+* Adapters: `LoggingNotifier` (structured line, always succeeds);
+  `WebhookNotifier` (JSON POST, 3 attempts, exponential backoff capped at
+  30s, fail-open); `InMemoryNotifier` (test fake, records events).
+* Facade emission: exactly one event per `run()` invocation, emitted after
+  the run scope commits; notifier exceptions are logged and swallowed.
+
+== Out of scope
+
+* Delivery guarantees beyond at-most-once for webhooks (durable consumers
+  subscribe to the ADR-006 evidence store); templating; e-mail/SMS adapters;
+  per-check routing.
+
+== Contracts
+
+* Configuration: `notifiers = [ { type = "webhook", url_env =
+  "DQ_WEBHOOK_URL" }, ... ]` — URLs come from environment variables named by
+  `url_env` (credential/endpoint hygiene); absence fails closed at
+  construction.
+* Event JSON: `{"run_key": ..., "dataset": ..., "status": ..., "failed":
+  [...], "ts": ..., "job_id": ...}`.
+* The notifier port never raises into the run; the webhook adapter converts
+  HTTP failures to logged warnings.
+
+== Acceptance gates
+
+* A fake notifier records one event per run with the correct status and
+  failing-check identities (passing and failing runs).
+* `WebhookNotifier` retries three times with backoff on transport failure
+  and gives up without raising.
+* Unknown notifier types fail closed at configuration time; zero notifiers
+  configured is the default and emits nothing.
+
+Links: TD-PROD-2; ADR-008; ADR-007 (MVP-1).

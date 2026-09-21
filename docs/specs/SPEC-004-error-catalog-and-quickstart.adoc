@@ -1,0 +1,49 @@
+= SPEC-004: Error catalog, quickstart, and compatibility matrix
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: TD-PROD-5, ADR-007 (UX commitments)
+
+== Purpose
+
+Every fail-closed boundary is only as good as its error message. This spec
+defines the operator-facing error catalog, the quickstart, and the
+compatibility matrix — plus a contract test that keeps the catalog complete
+as the code evolves.
+
+== In scope
+
+* `docs/error-catalog.adoc`: one section per module containing raise sites
+  (`dq/plan.py`, `dq/portable_config.py`, `dq/outcomes.py`, `dq/sinks.py`,
+  `dq/postgres_sink.py`, `dq/spark_adapter.py`, `dq/dq_framework.py`,
+  `dq/report.py`, engines, catalog, loader, identifiers). Each entry:
+  message family → cause → remediation.
+* `docs/quickstart.adoc`: five-minute path — install, define rules, run,
+  read evidence; error-catalog links on every failure mode.
+* Compatibility matrix: Python 3.12/3.13, Spark 3.5.9, PyDeequ 1.7,
+  Deequ 2.0.21, drivers (injected, never bundled).
+* Enforcing contract test `dq/tests/test_error_catalog.py`:
+  - walks `dq/**/*.py` (excluding `tests`, `notebooks`) with `ast` and
+    collects every in-scope raise site (`ConfigurationError`,
+    `ValidationError`, `RepositoryError`, `IdentifierError`,
+    `ValueError`, `DataFrameNotFoundError`);
+  - asserts the catalog contains a section for every module with raise
+    sites, that each section names the exception types it covers, and that
+    the stated raise-site total matches the AST count.
+
+== Out of scope
+
+* Changing any error message text (a follow-up may standardize prefixes);
+* non-English catalogs.
+
+== Acceptance gates
+
+* `pytest dq/tests/test_error_catalog.py` passes and demonstrably fails
+  when a raise site is added without a catalog entry (verified once by
+  temporarily adding a raise).
+* Catalog entries exist for all ten message families identified in the
+  raise-site inventory (139 sites at spec time).
+
+Links: TD-PROD-5; ADR-007 (UX commitments).

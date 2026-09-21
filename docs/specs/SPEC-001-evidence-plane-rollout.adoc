@@ -1,0 +1,50 @@
+= SPEC-001: Evidence plane rollout
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: TD-PROD-1, ADR-006
+
+== Purpose
+
+Turn the ADR-006 sink skeleton into a deployable evidence plane: retention,
+admission views, and a schema health check, so consumers can query durable
+evidence and operators can provision and verify it without reading this
+framework's code.
+
+== In scope
+
+* Retention: `retention_days` configuration on `PostgresOutcomeSink`;
+  a `prune(before_millis)` method deleting artifacts (and their runs) older
+  than the cutoff, executed in one transaction, returning the deleted
+  counts. Retention execution belongs to deployment scheduling, not the
+  framework.
+* Admission views shipped in `ddl_statements()`: `runs_completed`
+  (`status = 'completed'`) and `latest_per_dataset` (the newest completed run
+  per dataset), so admission predicates are one `SELECT` away.
+* `verify_schema()`: checks both tables exist and returns their row counts;
+  fails closed with `ConfigurationError` when the schema is absent.
+
+== Out of scope
+
+* Real-psycopg integration (deployment lane), RBAC/rows (SPEC-005), and any
+  mutation of persisted rows.
+
+== Contracts
+
+* `prune(before_millis: int) -> tuple[int, int]`: (artifacts deleted, runs
+  deleted); artifacts first, then runs — referential order.
+* `verify_schema() -> dict`: `{"runs": int, "artifacts": int}` row counts.
+* Errors: absent schema or database failure surface as `RepositoryError`
+  with the qualified table named; the connection closes on every path.
+
+== Acceptance gates
+
+* Fake-DB-API contracts: prune emits `DELETE FROM artifacts` before
+  `DELETE FROM runs` with the cutoff parameter; verify_schema issues two
+  existence checks and returns counts; failures roll back, close, and raise.
+* Retention defaults: no `retention_days` configured means `prune` refuses
+  to run (deleting evidence requires explicit configuration).
+
+Links: TD-PROD-1; ADR-006; ADR-007 (MVP-1).

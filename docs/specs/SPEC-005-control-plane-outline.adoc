@@ -1,0 +1,33 @@
+= SPEC-005: Multi-tenant control plane (outline)
+:toc:
+:sectlinks.
+
+Status: Outline — spec completes after co-design review (ADR-007 MVP-2) +
+Date: 2026-09-21 +
+Driven by: TD-PROD-4
+
+== Purpose
+
+Reserve the shape of the MVP-2 control plane so MVP-1's evidence plane does
+not preclude it: namespaces over the evidence store, API keys, retention
+per namespace, and RBAC on the query surface.
+
+== Outline (co-design commitments only)
+
+* A namespace is a PostgreSQL schema prefix plus a credential scope; API
+  keys resolve to (namespace, role) and never appear in configuration.
+* The engine library remains single-tenant and unauthenticated: tenancy is
+  a control-plane/evidence-store concern, matching Interface Segregation.
+* Isolation gates: negative tests prove a namespace cannot read or write
+  another namespace's evidence, and that retention cannot cross
+  namespaces.
+* Billing hooks attach to namespace usage (runs, artifacts), left to the
+  marketplace metering adapter.
+
+== Explicitly deferred
+
+Table DDL, API surface, identity-provider integration, and the admission
+predicate — all require the co-design review with the consumer (ADR-007)
+before this outline becomes a buildable spec.
+
+Links: TD-PROD-4; ADR-007 (MVP-2); ADR-006.

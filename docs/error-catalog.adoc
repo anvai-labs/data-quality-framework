@@ -1,0 +1,189 @@
+= Error catalog
+:toc:
+:sectlinks.
+
+Status: Maintained by contract test (U7/TD-PROD-5) +
+Date: 2026-09-21
+
+This catalog maps every fail-closed boundary to its cause and remediation.
+The framework raises 145 raise sites across the modules below; the contract
+test `dq/tests/test_error_catalog.py` keeps module coverage and exception
+types in sync with the code. Spec: SPEC-004.
+
+Every error derives from `DQFrameworkError`. `ConfigurationError` and
+`IdentifierError` mean "fix the configuration"; `ValidationError` means
+"the data or evidence failed validation — this is a quality signal, not a
+bug"; `ValueError` marks legacy engine boundaries; `DataFrameNotFoundError`
+means the referenced table could not be resolved; `RepositoryError` means
+the evidence store refused an unsafe write.
+
+== dq/plan.py
+
+*Content:* 31 `ConfigurationError` + 6 `ValidationError` sites.
+
+* Cause: malformed kernel construction — identifiers, digests, predicates,
+  metric/rule structure, semantic-version mixing, capability mismatches,
+  metric-supply mismatches.
+* Fix: construct plans only from `dq.plan` value objects; supply exactly the
+  deduplicated metric set `plan.metrics` requests, with counts as unsigned
+  ints and range bounds as exact `Fraction`s.
+
+== dq/portable_config.py
+
+*Content:* 26 `ConfigurationError` sites.
+
+* Cause: legacy checks outside the translatable subset, malformed fields,
+  or disabled/missing bounds.
+* Fix: restrict the check to `isComplete`, single-comparison
+  `hasCompleteness`, integer-comparison `hasSize`, `DistinctnessByGroup`,
+  `isNonNegative`, or `isInRange`; anything else stays on the legacy engine
+  path.
+
+== dq/outcomes.py
+
+*Content:* 15 `ValidationError` sites.
+
+* Cause: outcome evidence violated the strict JSON boundary (size, depth,
+  nodes, bytes, UTF-8, key types, boolean success) or the batch shape.
+* Fix: reduce diagnostic payloads or split the batch; results are never
+  truncated.
+
+== dq/sinks.py
+
+*Content:* 6 `ConfigurationError` + 1 `RepositoryError` sites.
+
+* Cause: repository configuration missing dataset/format/targets, malformed
+  table names, or a duplicate idempotent write.
+* Fix: provide dataset, whitelisted format, and at least one target; a
+  duplicate key means the caller is reusing an execution key.
+
+== dq/postgres_sink.py
+
+*Content:* 2 `ConfigurationError` sites.
+
+* Cause: the PostgreSQL DSN environment variable is absent, or the dataset
+  name is missing.
+* Fix: export the DSN variable (default `DQ_POSTGRES_DSN`) and set
+  `dataset` in the repository configuration.
+
+== dq/spark_adapter.py
+
+*Content:* 7 `ConfigurationError` sites.
+
+* Cause: bindings do not exactly match plan datasets, bound objects are not
+  Spark DataFrames, or columns fail exact case-sensitive resolution
+  (including duplicates and case-insensitive collisions); infinite range
+  bounds fail closed.
+* Fix: align binding names with the plan, pass DataFrames, and use the
+  exact column casing listed in the error.
+
+== dq/dq_framework.py
+
+*Content:* 4 `ConfigurationError` + 1 `ValidationError` + 3
+`DataFrameNotFoundError` sites.
+
+* Cause: unsupported configuration URI schemes, load failures, missing
+  dqrules, rules missing the `engine` key, unresolvable dataframe
+  references, or outcome batches over the summary limits.
+* Fix: repair the configuration; reference tables that exist in the
+  configured catalog; split validations that exceed the evidence-batch
+  limits.
+
+== dq/report.py
+
+*Content:* 2 `ConfigurationError` + 2 `ValidationError` sites.
+
+* Cause: evidence digests requested against remote configurations, digest
+  values that are not 64 hex characters, or timezone-less timestamps.
+* Fix: materialize the configuration locally and supply UTC-aware values.
+
+== dq/engine/deequ/expression.py
+
+*Content:* 15 `ConfigurationError` sites.
+
+* Cause: configured assertions or generated suggestions outside the
+  restricted grammar (non-lambda, multi-argument, calls, private methods,
+  unsupported elements).
+* Fix: use the documented assertion shapes — one argument, one comparison
+  against a literal; configuration is data, not code.
+
+== dq/engine/deequ/deequ_check.py
+
+*Content:* 1 `ValueError` site.
+
+* Cause: `hasDataType` named a type outside `ConstrainableDataTypes`.
+* Fix: use one of the documented constrainable data types.
+
+== dq/engine/deequ/deequ_constraints_builder.py
+
+*Content:* 1 `ValueError` site.
+
+* Cause: a constraint suggestion arrived without its code payload.
+* Fix: regenerate suggestions; this indicates a broken suggestion pipeline.
+
+== dq/engine/dqdl/dqdl_engine.py
+
+*Content:* 3 `ConfigurationError` + 4 `ValidationError` sites.
+
+* Cause: empty rulesets, out-of-range outcome caps, zero/malformed DQDL
+  outcomes, or an attempt to persist DQDL results to a repository.
+* Fix: provide a non-empty ruleset, valid cap, and use the framework report
+  for DQDL evidence.
+
+== dq/engine/databricks/databricks_check.py
+
+*Content:* 5 `ValueError` sites.
+
+* Cause: workspace URL/token validation failures, or combining an injected
+  workspace client with explicit credentials.
+* Fix: supply an HTTPS workspace origin without a path and a nonblank
+  token; prefer the injected client.
+
+== dq/engine/schemavalidation/schemavalidation_check.py
+
+*Content:* 3 `ValueError` sites.
+
+* Cause: unknown schema data types or unsupported catalog types in schema
+  validation configuration.
+* Fix: use a supported data type and catalog type.
+
+== dq/catalog/catalog_factory.py
+
+*Content:* 1 `ValueError` site.
+
+* Cause: `catalog_type` named a catalog with no registered provider.
+* Fix: use one of the supported catalog types listed in the error.
+
+== dq/engine/engine_loader.py
+
+*Content:* 1 `ValueError` site.
+
+* Cause: engine names must be lowercase alphanumeric with optional
+  underscores.
+* Fix: rename the engine or its module to match the loader convention.
+
+== dq/identifiers.py
+
+*Content:* 3 `IdentifierError` sites.
+
+* Cause: identifier parts outside the bounded `[A-Za-z_][A-Za-z0-9_]*`
+  charset, too many dot-separated parts, or non-string values.
+* Fix: supply bounded alphanumeric parts starting with a letter or
+  underscore; see the identifier shapes in the operator reference.
+
+== dq/engine/custom/custom_engine.py
+
+*Content:* 1 `ValueError` site.
+
+* Cause: `constraint` named a custom constraint outside the frozen surface.
+* Fix: use one of the four canonical constraints (or their legacy aliases).
+
+== dq/engine/custom/strategies.py
+
+*Content:* 1 `ConfigurationError` site (re-raised from identifier
+validation).
+
+* Cause: custom-engine reference lookups with malformed table or column
+  identifiers.
+* Fix: supply bounded alphanumeric identifiers; see the error catalog entry
+  on identifier shapes and ADR-006.
