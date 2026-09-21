@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Custom-engine constraints now decide through distributed aggregations and return
+  one bounded summary per column instead of collecting per-group or per-row rows to
+  the driver; zero and null baselines are reported as skipped pairs instead of
+  crashing, and the logging-only count action was removed
+- Replaced domain-specific test fixture vocabulary with neutral structural names
 - Upgraded PyDeequ from 1.6.0 to 1.7.0 and the Spark 3.5 Deequ JAR from 2.0.8
   to 2.0.21; CI now uses Java 17 for Spark integration
 - Made the top-level package and configuration helpers lazy with respect to Spark,

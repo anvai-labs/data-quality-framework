@@ -17,6 +17,22 @@ from dq.utils import repository_utils, constants
 logger = logging.getLogger(__name__)
 
 
+def _violation_expression(value, threshold_min, threshold_max):
+    """Build a violation predicate mirroring legacy truthiness rules.
+
+    A threshold of ``0`` or ``None`` disables that bound, exactly like the
+    previous per-row Python comparison. Null metric values never violate:
+    the comparison stays null and aggregations skip it.
+    """
+    violation = None
+    if threshold_min:
+        violation = value < F.lit(threshold_min)
+    if threshold_max:
+        over = value > F.lit(threshold_max)
+        violation = over if violation is None else violation | over
+    return F.lit(False) if violation is None else violation
+
+
 class CustomEngine(DQEngine):
     """Engine providing custom business-rule constraints.
 
@@ -26,6 +42,10 @@ class CustomEngine(DQEngine):
     * ``RateOfChange`` -- detects sudden value changes between consecutive rows
     * ``LookupBasedOnColumnNameList`` -- checks column names against a reference table
     * ``WideTablesNegativeValuesCheck`` -- finds negative values across wide tables
+
+    Every constraint decides through distributed aggregations. The driver only
+    receives bounded check summaries -- one metric per (constraint, column) and
+    schema-sized name lookups -- never per-group or per-row dataset content.
     """
 
     def __init__(self, config, dqts: Optional[int] = None):
@@ -97,6 +117,8 @@ class CustomEngine(DQEngine):
                 _results, _check_verification = self._check_for_negative_values(
                     dq_dimension, constraint, dataframe, level, ignore_columns, source
                 )
+            else:
+                raise ValueError(f"Unsupported custom constraint: {constraint}")
             _metrics_results += _results
             _verification_results += _check_verification
 
@@ -129,15 +151,19 @@ class CustomEngine(DQEngine):
                 constants.DQ_REPOSITORY_VERIFICATIONS,
                 current_milli_time,
             )
-        summarymetrics = []
-        for check in df_metrics_results.collect():
-            summarymetrics.append(
-                {
-                    "check": check["name"],
-                    "success": check["value"] == 1,
-                    "details": check.asDict(recursive=True),
-                }
-            )
+        summarymetrics = [
+            {
+                "check": row[2],
+                "success": row[3] == 1,
+                "details": {
+                    "entity": row[0],
+                    "instance": row[1],
+                    "name": row[2],
+                    "value": row[3],
+                },
+            }
+            for row in _metrics_results
+        ]
 
         return summarymetrics
 
@@ -153,6 +179,10 @@ class CustomEngine(DQEngine):
         source="timeSeries",
     ):
         """Check if DataFrame column names are present as rows in a reference table.
+
+        Matches the schema-sized column-name list against the reference table
+        through a distributed left-semi join and collects only the matched
+        names, never the reference table's rows.
 
         Args:
             dq_dimension: Quality dimension label (e.g. ``"Accuracy"``).
@@ -171,16 +201,32 @@ class CustomEngine(DQEngine):
         if ignore_columns and len(ignore_columns) > 0:
             for col in ignore_columns:
                 dataframe = dataframe.drop(col)
-        _metric_results = []
-        _check_verifications = []
-        df_ref = self._sparkSession.sql("Select " + ref_columns + " from " + ref_table)
-        colnameList = df_ref.rdd.flatMap(lambda x: x).collect()
-        colList = list(map(str, colnameList))
+        reference = self._sparkSession.sql(
+            "Select " + ref_columns + " from " + ref_table
+        )
+        reference_values = reference.select(
+            F.coalesce(F.col(ref_columns).cast("string"), F.lit("None")).alias(
+                "ref_value"
+            )
+        )
+        column_names = dataframe.sparkSession.createDataFrame(
+            [(name,) for name in dataframe.columns], ["column_name"]
+        )
+        matched_names = {
+            row["column_name"]
+            for row in column_names.join(
+                reference_values,
+                column_names["column_name"] == reference_values["ref_value"],
+                "left_semi",
+            ).collect()
+        }
         if source == "timeSeries":
             source = ""
 
+        _metric_results = []
+        _check_verifications = []
         for column in dataframe.columns:
-            if column in colList:
+            if column in matched_names:
                 _check_result = [
                     "MultiColumn",
                     f"{constraint} for {column} {source}",
@@ -325,6 +371,11 @@ class CustomEngine(DQEngine):
     ):
         """Detect sudden rate-of-change spikes between consecutive rows.
 
+        Consecutive-pair changes are computed with a distributed ``lag()``
+        window expression and reduced to one bounded summary per column.
+        A pair is not evaluable when either value is null or the baseline is
+        zero; skipped pairs are reported instead of crashing the run.
+
         Args:
             dq_dimension: Quality dimension label.
             constraint: Constraint name for metric logging.
@@ -345,46 +396,82 @@ class CustomEngine(DQEngine):
             group_by,
             sort_by,
         )
-        window = (
-            Window.partitionBy(*group_by).orderBy(F.col(sort_by)).rowsBetween(-1, 0)
-        )
-        for column in columns:
-            dataframe = dataframe.withColumn(
-                f"{column}_list", F.collect_list(column).over(window)
+        window = Window.partitionBy(*group_by).orderBy(F.col(sort_by))
+        projected = dataframe
+        aggregate_exprs = []
+        for index, column in enumerate(columns):
+            has_previous = F.lag(F.lit(1)).over(window).isNotNull()
+            previous = F.lag(F.col(column)).over(window)
+            current = F.col(column)
+            both_present = previous.isNotNull() & current.isNotNull()
+            change = F.when(
+                both_present & (previous != 0),
+                F.abs((previous - current) / previous) * 100,
             )
-        logger.debug(
-            "Updated dataframe contains %d rows and %d columns",
-            dataframe.count(),
-            len(dataframe.columns),
-        )
-        df_final = dataframe.collect()
+            # Window expressions must materialize in a projection before the
+            # global aggregation; Spark rejects them inside agg().
+            projected = projected.withColumn(
+                f"dq_roc_change_{index}", change
+            ).withColumn(f"dq_roc_pair_{index}", has_previous.cast("int"))
+            aggregate_exprs.extend(
+                [
+                    F.count(F.col(f"dq_roc_change_{index}")).alias(
+                        f"dq_roc_evaluated_{index}"
+                    ),
+                    F.sum(F.col(f"dq_roc_pair_{index}")).alias(f"dq_roc_pairs_{index}"),
+                    F.sum(
+                        _violation_expression(
+                            F.col(f"dq_roc_change_{index}"), min, max
+                        ).cast("long")
+                    ).alias(f"dq_roc_violations_{index}"),
+                    F.min(F.col(f"dq_roc_change_{index}")).alias(f"dq_roc_min_{index}"),
+                    F.max(F.col(f"dq_roc_change_{index}")).alias(f"dq_roc_max_{index}"),
+                ]
+            )
+        summary = projected.agg(*aggregate_exprs).head()
+
         _metric_results = []
         _check_verifications = []
-        for row in df_final:
-            for col in columns:
-                value_list = row[f"{col}_list"]
-                if value_list and len(value_list) == 2:
-                    change_percentile = abs(
-                        ((value_list[0] - value_list[1]) / value_list[0]) * 100
-                    )
-                    logger.debug(
-                        "%s - value list is %s and chg %% is %s",
-                        col,
-                        value_list,
-                        change_percentile,
-                    )
-                    self.__checkMinMaxThreshold(
-                        _check_verifications,
-                        _metric_results,
-                        col,
-                        dq_dimension,
-                        constraint,
-                        change_percentile,
-                        group_by,
-                        level,
-                        max,
-                        min,
-                    )
+        for index, column in enumerate(columns):
+            evaluated = int(summary[f"dq_roc_evaluated_{index}"] or 0)
+            pairs_total = int(summary[f"dq_roc_pairs_{index}"] or 0)
+            skipped = pairs_total - evaluated
+            if pairs_total == 0:
+                continue
+            violations = int(summary[f"dq_roc_violations_{index}"] or 0)
+            minimum_change = summary[f"dq_roc_min_{index}"]
+            maximum_change = summary[f"dq_roc_max_{index}"]
+            instance = f"{constraint} {group_by} for {column}"
+            if violations:
+                value = 0
+                check_status = "Error"
+                constraint_status = "Failure"
+                constraint_message = (
+                    f"{violations} violating of {evaluated} evaluated "
+                    f"consecutive pairs ({minimum_change} to "
+                    f"{maximum_change}%); {skipped} pairs skipped"
+                )
+            else:
+                value = 1
+                check_status = "Success"
+                constraint_status = "Success"
+                constraint_message = (
+                    f"{evaluated} evaluated consecutive pairs within thresholds "
+                    f"({minimum_change} to {maximum_change}%); "
+                    f"{skipped} pairs skipped"
+                )
+            _check_result = ["MultiColumn", instance, dq_dimension, value]
+            _verification_result = [
+                constraint,
+                level,
+                check_status,
+                instance,
+                constraint_status,
+                constraint_message,
+            ]
+            _check_verifications.append(_verification_result)
+            _metric_results.append(_check_result)
+
         if len(_metric_results) == 0:
             _check_result = [
                 "MultiColumn",
@@ -418,6 +505,10 @@ class CustomEngine(DQEngine):
     ):
         """Validate distinct counts of columns within groups meet thresholds.
 
+        Per-group distinct counts are reduced through a distributed minimum,
+        maximum, and violation count, so the driver receives one bounded
+        summary per column instead of one row per group.
+
         Args:
             dq_dimension: Quality dimension label.
             constraint: Constraint name for metric logging.
@@ -434,27 +525,69 @@ class CustomEngine(DQEngine):
         logger.info(
             "Checking distinctness of columns '%s' by group '%s'", columns, group_by
         )
-        funcs = [F.countDistinct]
-        exprs = [f(F.col(c)).alias(c) for f in funcs for c in columns]
-        group_df = dataframe.groupBy(*group_by).agg(*exprs)
-        data_collect = group_df.collect()
+        grouped_counts = dataframe.groupBy(*group_by).agg(
+            *[
+                F.countDistinct(F.col(column)).alias(f"dq_distinct_{index}")
+                for index, column in enumerate(columns)
+            ]
+        )
+        aggregate_exprs = [F.count(F.lit(1)).alias("dq_group_count")]
+        for index in range(len(columns)):
+            distinct = F.col(f"dq_distinct_{index}")
+            aggregate_exprs.extend(
+                [
+                    F.min(distinct).alias(f"dq_min_{index}"),
+                    F.max(distinct).alias(f"dq_max_{index}"),
+                    F.sum(_violation_expression(distinct, min, max).cast("long")).alias(
+                        f"dq_violations_{index}"
+                    ),
+                ]
+            )
+        summary = grouped_counts.agg(*aggregate_exprs).head()
+        group_count = int(summary["dq_group_count"] or 0)
+
         _metric_results = []
         _check_verifications = []
-        for row in data_collect:
-            for col in columns:
-                distinct_count = row[col]
-                self.__checkMinMaxThreshold(
-                    _check_verifications,
-                    _metric_results,
-                    col,
-                    dq_dimension,
-                    constraint,
-                    distinct_count,
-                    group_by,
-                    level,
-                    max,
-                    min,
+        for index, column in enumerate(columns):
+            if group_count == 0:
+                break
+            minimum = summary[f"dq_min_{index}"]
+            maximum = summary[f"dq_max_{index}"]
+            violations = int(summary[f"dq_violations_{index}"] or 0)
+            instance = f"{constraint} {group_by} for {column}"
+            if violations:
+                value = 0
+                check_status = "Error"
+                constraint_status = "Failure"
+                if min and minimum < min:
+                    constraint_message = (
+                        f"{violations} of {group_count} groups below the "
+                        f"threshold - {min} (lowest observed {minimum})"
+                    )
+                else:
+                    constraint_message = (
+                        f"{violations} of {group_count} groups above the "
+                        f"threshold - {max} (highest observed {maximum})"
+                    )
+            else:
+                value = 1
+                check_status = "Success"
+                constraint_status = "Success"
+                constraint_message = (
+                    f"distinct counts of {group_count} groups in "
+                    f"[{minimum}, {maximum}] meet the thresholds"
                 )
+            _check_result = ["MultiColumn", instance, dq_dimension, value]
+            _verification_result = [
+                constraint,
+                level,
+                check_status,
+                instance,
+                constraint_status,
+                constraint_message,
+            ]
+            _check_verifications.append(_verification_result)
+            _metric_results.append(_check_result)
 
         if len(_metric_results) == 0:
             _check_result = [
@@ -474,66 +607,3 @@ class CustomEngine(DQEngine):
             _check_verifications.append(_verification_result)
             _metric_results.append(_check_result)
         return _metric_results, _check_verifications
-
-    def __checkMinMaxThreshold(
-        self,
-        _check_verifications,
-        _metric_results,
-        col,
-        dq_dimension,
-        constraint,
-        value,
-        group_by,
-        level,
-        max,
-        min,
-    ):
-        if min and value < min:
-            _check_result = [
-                "MultiColumn",
-                f"{constraint} {group_by} for {col}",
-                dq_dimension,
-                0,
-            ]
-            _verification_result = [
-                constraint,
-                level,
-                "Error",
-                f"{constraint} {group_by} for {col}",
-                "Failure",
-                f"{value} is below the threshold - {min}",
-            ]
-            _check_verifications.append(_verification_result)
-        elif max and value > max:
-            _check_result = [
-                "MultiColumn",
-                f"{constraint} {group_by} for {col}",
-                dq_dimension,
-                0,
-            ]
-            _verification_result = [
-                constraint,
-                level,
-                "Error",
-                f"{constraint} {group_by} for {col}",
-                "Failure",
-                f"{value} is above the threshold - {max}",
-            ]
-            _check_verifications.append(_verification_result)
-        else:
-            _check_result = [
-                "MultiColumn",
-                f"{constraint} {group_by} for {col}",
-                dq_dimension,
-                1,
-            ]
-            _verification_result = [
-                constraint,
-                level,
-                "Success",
-                f"{constraint} {group_by} for {col}",
-                "Success",
-                f"{value} meets the threshold",
-            ]
-            _check_verifications.append(_verification_result)
-        _metric_results.append(_check_result)
