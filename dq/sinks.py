@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from dq.exceptions import ConfigurationError, RepositoryError
-from dq.identifiers import TableName
+from dq.identifiers import ColumnName, TableName
 
 _FILE_FORMATS = ("parquet", "csv", "json", "delta", "orc")
 
@@ -119,6 +119,12 @@ class RepositorySink(OutcomeSink):
             )
         file_config = repoconfig.get("file", {})
         self._paths = tuple(file_config.get("paths", []) or ())
+        # The tenant namespace is stamped on file writes; catalog tables keep
+        # their deployment-era shape and gain the column on recreation.
+        self._namespace = ColumnName.parse(
+            repoconfig.get("namespace", None) or "default",
+            label="tenant namespace",
+        )
         catalog_config = repoconfig.get("catalog", {})
         tables = []
         for table in catalog_config.get("tables", []) or ():
@@ -144,9 +150,11 @@ class RepositorySink(OutcomeSink):
         from pyspark.sql import functions as F
 
         year = F.year(F.from_unixtime(F.lit(key / 1000)))
+        namespace = str(self._namespace)
         enriched = (
             df.withColumn("dqts", F.lit(key))
             .withColumn("dataset", F.lit(self._dataset))
+            .withColumn("tenant_namespace", F.lit(namespace))
             .withColumn("year", F.lit(year))
         )
         targets = []

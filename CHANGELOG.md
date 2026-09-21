@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ADR-007 (certifiable evidence plane positioning, MVP slices) and the
   TD-PROD-1..5 debt-ledger entries driving packaging, alerting, anomaly
   policy, multi-tenancy, and documentation work
+- Added an adversarial review handoff (for Codex or any independent
+  reviewer) enumerating the author's six suspected design risks across the
+  kernel, sinks, evidence views, and open-core boundary
 
 - Added the durable PostgreSQL outcome sink behind the port (ADR-006):
   driver-neutral by dependency injection (the framework never imports a

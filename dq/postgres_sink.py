@@ -10,8 +10,11 @@ PostgreSQL driver is imported here. One run is one transaction: saves inside
 :meth:`PostgresOutcomeSink.run_scope` join a single transaction that commits
 on clean exit and rolls back on any exception, so a partial run never
 becomes visible evidence. Writes are append-only and idempotent — primary
-keys on the run key and artifact sequence with ``ON CONFLICT DO NOTHING``
-mean first write wins and retries are safe.
+keys on namespace plus run key and artifact sequence with ``ON CONFLICT DO
+NOTHING`` mean first write wins and retries are safe.
+
+Threading: one sink instance owns one run scope at a time and is not
+thread-safe; share instances across threads only between scopes.
 """
 
 from __future__ import annotations
@@ -104,7 +107,8 @@ class PostgresOutcomeSink(OutcomeSink):
         """Reference DDL for operators; provisioning belongs to deployment.
 
         Includes the tenant namespace column and the admission views
-        (SPEC-001/006): `runs_completed` and `latest_per_dataset`.
+        (SPEC-001/006): `runs_completed` and `latest_per_dataset`. Views use
+        CREATE OR REPLACE so re-running provisioning is idempotent.
         """
         schema = self._schema.quoted_pg
         runs = f"{schema}.{self._runs_table.quoted_pg}"
@@ -121,10 +125,9 @@ class PostgresOutcomeSink(OutcomeSink):
             "run_key BIGINT NOT NULL, artifact_type TEXT NOT NULL, "
             "seq INTEGER NOT NULL, dataset TEXT NOT NULL, payload JSONB NOT NULL, "
             f"PRIMARY KEY (namespace, run_key, artifact_type, seq))",
-            f"CREATE VIEW IF NOT EXISTS {schema}.runs_completed AS "
+            f"CREATE OR REPLACE VIEW {schema}.runs_completed AS "
             f"SELECT * FROM {runs} WHERE status = 'completed'",
-            "CREATE VIEW IF NOT EXISTS "
-            f"{schema}.latest_per_dataset AS "
+            f"CREATE OR REPLACE VIEW {schema}.latest_per_dataset AS "
             "SELECT r.* FROM (SELECT namespace, dataset, "
             "MAX(started_millis) AS latest FROM "
             f"{runs} WHERE status = 'completed' GROUP BY namespace, dataset) "

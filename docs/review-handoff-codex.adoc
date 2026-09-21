@@ -1,0 +1,112 @@
+= Adversarial review handoff for Codex
+:toc:
+:sectlinks.
+
+Status: Review brief — target reviewer: Codex (or any independent agent) +
+Date: 2026-09-21 +
+Author: Claude (framework session) — reviewed work is my own; attack it.
+
+== Why you are reviewing
+
+This repository just completed a large modernization push (U1–U7 plus
+post-plan extensions) and a strategic pivot (ADR-007 productization,
+ADR-009 open-core split with a closed control-plane repo, ADR-010
+compute-agnostic data plane). The author requests independent adversarial
+review because **self-review of self-designed specs has a known blind spot**:
+the same reasoning that produced the design validates it. Your job is to
+find the long-tail wrong path BEFORE we build on it.
+
+== What to review (scope map)
+
+[cols="2,3",options="header"]
+|===
+|Artefact |Location
+|Semantic kernel (counts/v1, groups/v1, ranges/v1) |`dq/plan.py`
+|Native Spark adapter (all three versions) |`dq/spark_adapter.py`
+|HOCON translation subset |`dq/portable_config.py`
+|Outcome sink port + Repository/InMemory sinks |`dq/sinks.py`
+|Durable PostgreSQL sink |`dq/postgres_sink.py`
+|Evidence-plane + namespace specs |`docs/specs/SPEC-001..006`
+|SQLAlchemy/Arrow sink spec |`docs/specs/SPEC-007`
+|Open-core boundary + control plane |ADR-009, closed repo `dq-control-plane`
+|Strategy |`docs/product-strategy.adoc`, ADR-007, ADR-010
+|===
+
+== The six challenges the author already suspects (attack these first)
+
+. *Semantic-version fragmentation.* Plans are single-semantics: a data
+team's real ruleset mixes completeness + grouped + range checks and today
+needs THREE plans, THREE evidence sets, and a join to answer "is this
+dataset healthy?" Is the single-semantics rule wrong? Would capability
+tagging inside one plan be safer? What breaks in the certification model if
+plans mix?
+. *Vacuous pass on empty input* (groups/v1 `no_groups`, ranges/v1
+`no_values`): chosen for legacy compatibility. An upstream pipeline that
+silently produces zero rows makes every grouped/range check PASS. Is
+legacy compatibility worth masking pipeline breakage? Should v2 flip the
+default with an explicit opt-in?
+. *`CREATE OR REPLACE VIEW` admission views*: view DDL ships in
+`ddl_statements()` but has never been executed against a real PostgreSQL.
+The `latest_per_dataset` view joins on `started_millis` equality — ties
+resolve to multiple rows. Validate the SQL against real PG and attack the
+view semantics.
+. *Namespace stamping inconsistency*: `RepositorySink` stamps
+`tenant_namespace` on file writes but catalog tables keep their
+deployment-era shape (column appears only on recreation). Documented — but
+is acceptable? Cross-sink evidence queries would disagree.
+. *Thread safety*: `PostgresOutcomeSink` holds run-scope state
+(`self._active`) on the instance; concurrent runs sharing one sink corrupt
+each other's scope. Documented as not-thread-safe — is per-run sink
+construction enough, or must the port be stateless?
+. *Closed-repo dependency sequencing*: `dq-control-plane` pins
+`data-quality-framework>=2.3.0` from PyPI, but the v2.3.0 PyPI publish is
+blocked on an environment fix. The closed side cannot install its own
+dependency until the owner unblocks publishing.
+
+== Additional attack surfaces
+
+* Kernel exactness: ranges/v1 bounds from binary-float columns render
+through shortest-decimal — is that "exact" enough to be honest, or should
+decimal columns be REQUIRED for range semantics?
+* Differential gates: the suites compare decisions, not metric payloads. Can
+decisions agree while evidence payloads diverge harmfully?
+* The open-core license split (ADR-009): attack the boundary placement —
+is `namespace` primitives in OSS actually the trojan horse that makes the
+closed repo's moat trivially rebuildable? Is the OSS "runs without control
+plane" property enforceable long-term?
+* Marketplace reality: AWS/Azure/Databricks listing requirements vs
+MVP-1/2 scope — is the MVP ladder missing compliance items (multi-tenant
+data isolation attestations, SOC 2, pen tests) that gate revenue, not just
+polish?
+* Error catalog rot: the contract test pins modules and types, not
+message families. What drifts that the test cannot see?
+
+== How to review (protocol)
+
+. Read the ADRs (005–010) and SPEC-001..007 first; they state intent.
+. Verify claims against code — every spec contract maps to a test in
+`dq/tests/test_postgres_sink.py`, `test_spark_adapter_groups.py`,
+`test_spark_adapter_ranges.py`, `test_groups_differential.py`,
+`test_ranges_differential.py`, `test_error_catalog.py`.
+. Run: `pytest dq/tests/ -q` (full, needs Spark+jars) and
+`pytest dq/tests/ -m "not spark" -q` (fast lane).
+. For each finding: severity (blocker/major/minor), the artefact + line,
+evidence, and a proposed correction.
+. Publish findings as a review document in this repo (`docs/reviews/`) —
+the author will convert accepted findings into ADR amendments and SPEC
+revisions.
+
+== Known limitations the author already concedes (do not re-report)
+
+* No real-PostgreSQL integration lane (fake DB-API only); psycopg is a
+deployment concern by design.
+* Scale benchmarks are manual/scheduled, not in CI.
+* Schema/custom engine tests carry legacy loose-assertion style (U7
+partially consolidated).
+* The error catalog pins modules and types but not message families.
+
+== Out of review scope
+
+* The IBKR consumer track (separate session owns it).
+* The git-history vocabulary purge decision (owner-only).
+* v2.2.0/v2.3.0 PyPI publish mechanics (owner environment fix pending).
