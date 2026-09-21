@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CustomEngine` facade, froze its constraint surface as a permanent adapter contract
   (ADR-003), and added fail-closed validation of reference table and column
   identifiers before Spark SQL is built
+- Renamed the custom constraints to canonical names (`GroupedDistinctBounds`,
+  `ConsecutivePercentChange`, `ColumnNamesInReference`, `NonNegativeColumns`);
+  the previous names remain accepted aliases that emit their historical rows and
+  a deprecation warning
 - Replaced domain-specific test fixture vocabulary with neutral structural names
 - Upgraded PyDeequ from 1.6.0 to 1.7.0 and the Spark 3.5 Deequ JAR from 2.0.8
   to 2.0.21; CI now uses Java 17 for Spark integration

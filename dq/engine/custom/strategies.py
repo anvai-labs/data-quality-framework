@@ -81,7 +81,7 @@ def violation_expression(value, threshold_min, threshold_max):
     return F.lit(False) if violation is None else violation
 
 
-class DistinctnessByGroupStrategy:
+class GroupedDistinctBoundsStrategy:
     """Validate distinct counts of columns within groups meet thresholds.
 
     Per-group distinct counts are reduced through a distributed minimum,
@@ -92,6 +92,7 @@ class DistinctnessByGroupStrategy:
     def apply(
         self,
         dataframe: DataFrame,
+        name: str,
         dq_dimension: str,
         level: str,
         columns,
@@ -133,7 +134,7 @@ class DistinctnessByGroupStrategy:
             minimum = summary[f"dq_min_{index}"]
             maximum = summary[f"dq_max_{index}"]
             violations = int(summary[f"dq_violations_{index}"] or 0)
-            instance = f"DistinctnessByGroup {group_by} for {column}"
+            instance = f"{name} {group_by} for {column}"
             if violations:
                 value = 0
                 check_status = "Error"
@@ -159,7 +160,7 @@ class DistinctnessByGroupStrategy:
             metric_results.append(metric_row(instance, dq_dimension, value))
             check_verifications.append(
                 verification_row(
-                    "DistinctnessByGroup",
+                    name,
                     level,
                     check_status,
                     instance,
@@ -169,14 +170,12 @@ class DistinctnessByGroupStrategy:
             )
 
         if len(metric_results) == 0:
-            instance = f"DistinctnessByGroup {group_by} for {','.join(columns)}"
-            return no_data_results(
-                "DistinctnessByGroup", instance, dq_dimension, level, 1
-            )
+            instance = f"{name} {group_by} for {','.join(columns)}"
+            return no_data_results(name, instance, dq_dimension, level, 1)
         return metric_results, check_verifications
 
 
-class RateOfChangeStrategy:
+class ConsecutivePercentChangeStrategy:
     """Detect sudden rate-of-change spikes between consecutive rows.
 
     Consecutive-pair changes are computed with a distributed ``lag()``
@@ -188,6 +187,7 @@ class RateOfChangeStrategy:
     def apply(
         self,
         dataframe: DataFrame,
+        name: str,
         dq_dimension: str,
         level: str,
         columns,
@@ -249,7 +249,7 @@ class RateOfChangeStrategy:
             violations = int(summary[f"dq_roc_violations_{index}"] or 0)
             minimum_change = summary[f"dq_roc_min_{index}"]
             maximum_change = summary[f"dq_roc_max_{index}"]
-            instance = f"RateOfChange {group_by} for {column}"
+            instance = f"{name} {group_by} for {column}"
             if violations:
                 value = 0
                 check_status = "Error"
@@ -271,7 +271,7 @@ class RateOfChangeStrategy:
             metric_results.append(metric_row(instance, dq_dimension, value))
             check_verifications.append(
                 verification_row(
-                    "RateOfChange",
+                    name,
                     level,
                     check_status,
                     instance,
@@ -281,12 +281,12 @@ class RateOfChangeStrategy:
             )
 
         if len(metric_results) == 0:
-            instance = f"RateOfChange {group_by} for {columns}"
-            return no_data_results("RateOfChange", instance, dq_dimension, level, 0)
+            instance = f"{name} {group_by} for {columns}"
+            return no_data_results(name, instance, dq_dimension, level, 0)
         return metric_results, check_verifications
 
 
-class LookupByColumnNameListStrategy:
+class ColumnNamesInReferenceStrategy:
     """Check if DataFrame column names are present as rows in a reference table.
 
     Matches the schema-sized column-name list against the reference table
@@ -298,6 +298,7 @@ class LookupByColumnNameListStrategy:
     def apply(
         self,
         dataframe: DataFrame,
+        name: str,
         dq_dimension: str,
         level: str,
         ref_table=None,
@@ -354,14 +355,14 @@ class LookupByColumnNameListStrategy:
                 check_status = "Failure"
                 constraint_status = "Failure"
                 message = "Column not found in the ref table"
-            instance = f"LookupBasedOnColumnNameList for {column} {source}"
+            instance = f"{name} for {column} {source}"
             metric_results.append(metric_row(instance, dq_dimension, value))
             check_verifications.append(
                 verification_row(
-                    "LookupBasedOnColumnNameList",
+                    name,
                     level,
                     check_status,
-                    f"LookupBasedOnColumnNameList  for {column} {source}",
+                    f"{name}  for {column} {source}",
                     constraint_status,
                     message,
                 )
@@ -370,7 +371,7 @@ class LookupByColumnNameListStrategy:
         return metric_results, check_verifications
 
 
-class WideTableNegativeValuesStrategy:
+class NonNegativeColumnsStrategy:
     """Check for negative values across all numeric columns in a wide table.
 
     One aggregate row carries every column's negative count, so the driver
@@ -380,6 +381,7 @@ class WideTableNegativeValuesStrategy:
     def apply(
         self,
         dataframe: DataFrame,
+        name: str,
         dq_dimension: str,
         level: str,
         ignore_columns=None,
@@ -414,14 +416,14 @@ class WideTableNegativeValuesStrategy:
                 check_status = "Success"
                 constraint_status = "Success"
                 message = f"Rule NoNegative values passed for {column} {source}"
-            instance = f"WideTablesNegativeValuesCheck for {column} {source}"
+            instance = f"{name} for {column} {source}"
             metric_results.append(metric_row(instance, dq_dimension, value))
             check_verifications.append(
                 verification_row(
-                    "WideTablesNegativeValuesCheck",
+                    name,
                     level,
                     check_status,
-                    f"WideTablesNegativeValuesCheck  for {column} {source}",
+                    f"{name}  for {column} {source}",
                     constraint_status,
                     message,
                 )

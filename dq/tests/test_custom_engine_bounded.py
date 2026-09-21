@@ -22,8 +22,8 @@ from pyspark.sql.types import (
 
 from dq.engine.custom.custom_engine import CustomEngine
 from dq.engine.custom.strategies import (
-    DistinctnessByGroupStrategy,
-    RateOfChangeStrategy,
+    ConsecutivePercentChangeStrategy,
+    GroupedDistinctBoundsStrategy,
 )
 from dq.exceptions import ConfigurationError
 
@@ -226,8 +226,8 @@ def test_rate_of_change_passing_ranges_report_success(spark):
 
 def test_rate_of_change_zero_denominator_does_not_crash(spark):
     frame = spark.createDataFrame(_RATE_DATA, _RATE_SCHEMA)
-    metric_results, verifications = RateOfChangeStrategy().apply(
-        frame, "Compliance", "Error", ["v"], ["grp"], "day", None, 150
+    metric_results, verifications = ConsecutivePercentChangeStrategy().apply(
+        frame, "RateOfChange", "Compliance", "Error", ["v"], ["grp"], "day", None, 150
     )
     assert metric_results[0][3] == 1, "no pair may violate max 150"
     message = verifications[0][5]
@@ -339,13 +339,47 @@ def test_apply_fails_closed_on_unsupported_constraints(spark):
 
 def test_distinctness_reports_groups_above_the_maximum(spark):
     frame = spark.createDataFrame(_GROUPS_DATA, _GROUPS_SCHEMA)
-    metric_results, verifications = DistinctnessByGroupStrategy().apply(
-        frame, "Compliance", "Error", ["id"], ["region"], None, 1
+    metric_results, verifications = GroupedDistinctBoundsStrategy().apply(
+        frame, "DistinctnessByGroup", "Compliance", "Error", ["id"], ["region"], None, 1
     )
     assert metric_results[0][3] == 0, "east and west have more than 1 distinct id"
     message = verifications[0][5]
     assert "above the threshold - 1" in message
     assert "2 of 3 groups" in message
+
+
+def test_canonical_names_run_with_canonical_instance_strings(spark):
+    frame = spark.createDataFrame(_GROUPS_DATA, _GROUPS_SCHEMA)
+    config = distinctness_config(["id"], ["region"], 2, 3)
+    config["checks"][0]["constraint"] = "GroupedDistinctBounds"
+    results = CustomEngine(config).apply(frame)
+    assert len(results) == 1
+    assert results[0]["details"]["instance"].startswith("GroupedDistinctBounds ")
+    assert results[0]["success"] is False
+
+
+def test_legacy_aliases_keep_their_historical_output(spark, caplog):
+    frame = spark.createDataFrame(_GROUPS_DATA, _GROUPS_SCHEMA)
+    legacy_config = distinctness_config(["id"], ["region"], 2, 3)
+    canonical_config = distinctness_config(["id"], ["region"], 2, 3)
+    canonical_config["checks"][0]["constraint"] = "GroupedDistinctBounds"
+    with caplog.at_level("WARNING"):
+        legacy_results = CustomEngine(legacy_config).apply(frame)
+    canonical_results = CustomEngine(canonical_config).apply(frame)
+    assert any("renamed to" in record.message for record in caplog.records)
+    assert [
+        (result["success"], result["details"]["value"]) for result in legacy_results
+    ] == [
+        (result["success"], result["details"]["value"]) for result in canonical_results
+    ]
+    assert (
+        legacy_results[0]["details"]["instance"]
+        == "DistinctnessByGroup ['region'] for id"
+    )
+    assert (
+        canonical_results[0]["details"]["instance"]
+        == "GroupedDistinctBounds ['region'] for id"
+    )
 
 
 def test_lookup_rejects_unsafe_reference_table_identifiers(spark):

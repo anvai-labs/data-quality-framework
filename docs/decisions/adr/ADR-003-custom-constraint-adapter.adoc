@@ -69,6 +69,23 @@ main design prerequisite for shrinking the engine's internals, and the engine
 remains the reference point for what bounded-summary compatibility looks like
 for other engines that cannot move to the kernel.
 
+== Amendment 2026-09-20: canonical constraint names
+
+The owner directed renaming the constraints to semantically apt names. The
+freeze is amended, not lifted. The canonical names are:
+
+* ``GroupedDistinctBounds`` (was ``DistinctnessByGroup``)
+* ``ConsecutivePercentChange`` (was ``RateOfChange``)
+* ``ColumnNamesInReference`` (was ``LookupBasedOnColumnNameList``)
+* ``NonNegativeColumns`` (was ``WideTablesNegativeValuesCheck``)
+
+The legacy names remain accepted aliases that must keep producing
+byte-identical metric and verification rows, including their historical
+instance strings, so existing rule packs (including external consumers) are
+unaffected. New configurations should use the canonical names; the engine logs
+a deprecation warning when an alias is used. Removing an alias requires an
+ADR and a consumer migration plan.
+
 We deliberately do not port these constraints to Great Expectations or DQDL
 (their vocabularies cannot express them), and we do not add a generic SQL rule
 type anywhere in the framework, because executable strings in configuration are

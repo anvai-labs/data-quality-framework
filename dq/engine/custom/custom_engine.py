@@ -8,10 +8,10 @@ from pydeequ.repository import ResultKey
 
 from dq.engine.dq_engine import DQEngine
 from dq.engine.custom.strategies import (
-    DistinctnessByGroupStrategy,
-    LookupByColumnNameListStrategy,
-    RateOfChangeStrategy,
-    WideTableNegativeValuesStrategy,
+    ColumnNamesInReferenceStrategy,
+    ConsecutivePercentChangeStrategy,
+    GroupedDistinctBoundsStrategy,
+    NonNegativeColumnsStrategy,
 )
 
 from dq.utils import repository_utils, constants
@@ -22,26 +22,37 @@ logger = logging.getLogger(__name__)
 class CustomEngine(DQEngine):
     """Engine providing custom business-rule constraints.
 
-    Supports four built-in constraint types:
+    Supports four built-in constraint types, addressed by canonical name:
 
-    * ``DistinctnessByGroup`` -- validates distinct counts within groups
-    * ``RateOfChange`` -- detects sudden value changes between consecutive rows
-    * ``LookupBasedOnColumnNameList`` -- checks column names against a reference table
-    * ``WideTablesNegativeValuesCheck`` -- finds negative values across wide tables
+    * ``GroupedDistinctBounds`` -- validates distinct counts within groups
+    * ``ConsecutivePercentChange`` -- bounds the change between consecutive rows
+    * ``ColumnNamesInReference`` -- checks column names against a reference table
+    * ``NonNegativeColumns`` -- finds negative values across all columns
 
     The constraint set is frozen (ADR-003): rule packs depend on these names
     and on the exact metric/verification shapes, so the engine is a permanent
-    first-class adapter rather than a migration stop. Each constraint's Spark
+    first-class adapter rather than a migration stop. The pre-rename names
+    (``DistinctnessByGroup``, ``RateOfChange``,
+    ``LookupBasedOnColumnNameList``, ``WideTablesNegativeValuesCheck``)
+    remain accepted aliases and keep emitting their historical instance
+    strings, so existing rule packs are unaffected. Each constraint's Spark
     planning lives in one strategy object; every strategy decides through
     distributed aggregations and the driver only receives bounded check
     summaries.
     """
 
     _STRATEGIES = {
-        "DistinctnessByGroup": DistinctnessByGroupStrategy(),
-        "RateOfChange": RateOfChangeStrategy(),
-        "LookupBasedOnColumnNameList": LookupByColumnNameListStrategy(),
-        "WideTablesNegativeValuesCheck": WideTableNegativeValuesStrategy(),
+        "GroupedDistinctBounds": GroupedDistinctBoundsStrategy(),
+        "ConsecutivePercentChange": ConsecutivePercentChangeStrategy(),
+        "ColumnNamesInReference": ColumnNamesInReferenceStrategy(),
+        "NonNegativeColumns": NonNegativeColumnsStrategy(),
+    }
+
+    _LEGACY_ALIASES = {
+        "DistinctnessByGroup": "GroupedDistinctBounds",
+        "RateOfChange": "ConsecutivePercentChange",
+        "LookupBasedOnColumnNameList": "ColumnNamesInReference",
+        "WideTablesNegativeValuesCheck": "NonNegativeColumns",
     }
 
     def __init__(self, config, dqts: Optional[int] = None):
@@ -65,20 +76,33 @@ class CustomEngine(DQEngine):
         for check_config in custom_checks:
             constraint = check_config.get("constraint", None)
             strategy = self._STRATEGIES.get(constraint)
-            if strategy is None:
-                raise ValueError(f"Unsupported custom constraint: {constraint}")
-            params = {
-                "dq_dimension": check_config.get("dq_dimension", "Compliance"),
-                "level": check_config.get("level", None),
-            }
-            if constraint == "DistinctnessByGroup":
+            if strategy is not None:
+                canonical = constraint
+            else:
+                canonical = self._LEGACY_ALIASES.get(constraint)
+                if canonical is None:
+                    raise ValueError(f"Unsupported custom constraint: {constraint}")
+                strategy = self._STRATEGIES[canonical]
+                logger.warning(
+                    "custom constraint %r was renamed to %r; update the configuration",
+                    constraint,
+                    canonical,
+                )
+            # The configured name is the display name: legacy aliases keep
+            # their historical instance and verification strings verbatim.
+            params = {"name": constraint}
+            params.update(
+                dq_dimension=check_config.get("dq_dimension", "Compliance"),
+                level=check_config.get("level", None),
+            )
+            if canonical == "GroupedDistinctBounds":
                 params.update(
                     columns=check_config.get("columns", None),
                     group_by=check_config.get("group_by", None),
                     threshold_min=check_config.get("min", None),
                     threshold_max=check_config.get("max", None),
                 )
-            elif constraint == "RateOfChange":
+            elif canonical == "ConsecutivePercentChange":
                 params.update(
                     columns=check_config.get("columns", None),
                     group_by=check_config.get("group_by", None),
@@ -86,14 +110,14 @@ class CustomEngine(DQEngine):
                     threshold_min=check_config.get("min", None),
                     threshold_max=check_config.get("max", None),
                 )
-            elif constraint == "LookupBasedOnColumnNameList":
+            elif canonical == "ColumnNamesInReference":
                 params.update(
                     ref_table=check_config.get("ref_table", None),
                     ref_columns=check_config.get("ref_columns", None),
                     ignore_columns=check_config.get("ignore_columns", None),
                     source=check_config.get("source", None),
                 )
-            elif constraint == "WideTablesNegativeValuesCheck":
+            elif canonical == "NonNegativeColumns":
                 params.update(
                     ignore_columns=check_config.get("ignore_columns", None),
                     source=check_config.get("source", None),
