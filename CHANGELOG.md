@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rules through PyDeequ and the native Spark adapter; decisions agree on nulls,
   decimals, empty inputs, and exact thresholds, and the intentional NaN divergence
   is pinned and documented
+- Added the groups/v1 kernel contract (ADR-004): grouped distinct-count bounds as
+  exact, threshold-independent metrics with a grouped-distinct rule kind and
+  vacuous-pass empty-input semantics matching the legacy constraint
 - Added a bounded PyDeequ DQDL compatibility engine and executable example
 - Added ADR-002 for an engine-neutral rule and metric kernel with Spark, PyDeequ,
   Great Expectations, and Arrow/DataFusion adapters

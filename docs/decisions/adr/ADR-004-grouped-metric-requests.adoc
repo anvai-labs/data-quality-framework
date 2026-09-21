@@ -1,0 +1,88 @@
+= ADR-004: Grouped metric requests under groups/v1
+:toc:
+:sectlinks.
+
+Status: Accepted +
+Date: 2026-09-20
+
+== Context
+
+ADR-003 makes the custom engine's ``DistinctnessByGroup`` the first constraint
+ slated for internal absorption into the engine-neutral kernel: its decisions
+must become expressible as portable rules without changing what rule packs see.
+The counts/v1 kernel (ADR-002) has no group dimension: its metrics are global
+counts over one immutable snapshot, and its rules compare one exact value per
+rule. Grouped distinctness adds three things counts/v1 deliberately does not
+model:
+
+* a grouping dimension on metric requests;
+* universal quantification over an unbounded set of groups (one threshold pair
+  must decide every group);
+* the legacy vacuous outcome on empty input, where the constraint passes with
+  "No suitable data".
+
+Per-group rows cannot cross the kernel boundary: groups are unbounded, and the
+driver only ever receives bounded summaries.
+
+== Decision
+
+Introduce ``groups/v1`` as a sibling semantic version in ``dq.plan`` with a
+minimal, threshold-independent metric set.
+
+* Metric kinds: ``GROUP_COUNT`` (exact number of distinct groups),
+  ``GROUP_MIN_DISTINCT`` and ``GROUP_MAX_DISTINCT`` (the smallest and largest
+  per-group distinct count of one column within one grouping). All three are
+  exact integers computable in one distributed aggregate, independent of any
+  threshold, so plans can deduplicate and cache them like counts/v1 metrics.
+* ``MetricKey`` gains an immutable ``group_by`` tuple of columns. Group kinds
+  require a non-empty grouping and the ``groups/v1`` version; counts/v1 kinds
+  reject a grouping. The grouping is part of metric identity and therefore of
+  plan fingerprints.
+* New rule kind ``GROUPED_DISTINCT``: one predicate bound to one target metric
+  (``GROUP_MIN_DISTINCT`` for lower bounds, ``GROUP_MAX_DISTINCT`` for upper
+  bounds). "Every group holds at least ``m`` and at most ``M`` distinct
+  values" is exactly ``min >= m`` and ``max <= M`` over the per-group distinct
+  counts, so one legacy constraint translates into up to two portable rules
+  with ``.min`` and ``.max`` rule-id suffixes. Thresholds must be non-negative
+  integers: distinct counts are cardinalities.
+* A plan is bound to exactly one semantic version; mixing counts/v1 and
+  groups/v1 metrics in one plan is a configuration error. Capability
+  negotiation is per version, exactly as for counts/v1.
+* A grouped rule requires exactly two metrics: ``GROUP_COUNT`` and its target
+  (``GROUP_MIN_DISTINCT`` or ``GROUP_MAX_DISTINCT``). Adapters compute both
+  bounds from the same aggregate, but the kernel validates only what the rule
+  constrains, so empty input needs no sentinel values.
+* Empty input (``GROUP_COUNT`` = 0) makes every grouped rule pass vacuously
+  with reason ``no_groups``, preserving the legacy outcome. When groups
+  exist, the rule compares the target metric as an exact fraction.
+
+The Spark adapter implements the three metrics with the same distributed
+aggregation the custom engine's ``DistinctnessByGroupStrategy`` uses today
+(group-level distinct counts reduced to count/min/max), so absorbing the
+constraint changes no decisions, adds no scan, and never collects per-group
+rows.
+
+== Consequences
+
+The kernel gains a second semantic version at the cost of one version check
+and one evaluation branch; counts/v1 fingerprints and outcomes are unchanged
+byte for byte. Rule packs keep the legacy configuration surface (ADR-003);
+translators own the mapping to groups/v1 rules and back. The vacuous
+empty-input pass is a compatibility choice, not an endorsement: new grouped
+checks should prefer failing closed, and a future groups/v2 may make it
+configurable.
+
+We deliberately do not add per-group metric rows, threshold-dependent metrics
+(such as violating-group counts), or approximate sketches to groups/v1; each
+would break metric/rule separation or boundedness and needs its own design.
+
+== Acceptance gates
+
+* Pure kernel contracts: construction, canonical identity, version pinning,
+  metric deduplication, evaluation of both predicates, and the vacuous and
+  inconsistent-value paths.
+* The Spark adapter executes groups/v1 through one shared aggregate per
+  dataset and never receives per-group rows.
+* Differential equivalence: groups/v1 rules and the legacy
+  ``DistinctnessByGroup`` strategy decide identically over shared fixtures,
+  including empty input and one-sided thresholds.
