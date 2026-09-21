@@ -9,6 +9,9 @@ after proving null/NaN, empty-input, and partition invariance contracts.
 Groups/v1 adds grouped distinct-count bounds (ADR-004): three exact
 threshold-independent metrics per (column, grouping) and rules that compare one
 bound, passing vacuously on empty input exactly like the legacy constraint.
+Ranges/v1 adds value-range bounds (ADR-005): exact column count, minimum, and
+maximum metrics with rules that compare one bound, ignoring nulls and NaN and
+passing vacuously on empty columns.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from dq.outcomes import CheckOutcome, normalize_outcomes
 
 SEMANTICS_VERSION = "counts/v1"
 SEMANTIC_GROUPS_VERSION = "groups/v1"
+SEMANTIC_RANGES_VERSION = "ranges/v1"
 MAX_RULES = 10_000
 MAX_COUNT = 2**64 - 1
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
@@ -52,12 +56,16 @@ class MetricKind(Enum):
     GROUP_COUNT = "group_count"
     GROUP_MIN_DISTINCT = "group_min_distinct"
     GROUP_MAX_DISTINCT = "group_max_distinct"
+    COLUMN_COUNT = "column_count"
+    COLUMN_MIN = "column_min"
+    COLUMN_MAX = "column_max"
 
 
 class RuleKind(Enum):
     SIZE = "size"
     COMPLETENESS = "completeness"
     GROUPED_DISTINCT = "grouped_distinct"
+    VALUE_RANGE = "value_range"
 
 
 class Comparison(Enum):
@@ -171,6 +179,18 @@ class MetricKey:
             elif type(self.column) is not ColumnRef:
                 raise ConfigurationError("group distinct requires a column")
             return
+        if self.kind in (
+            MetricKind.COLUMN_COUNT,
+            MetricKind.COLUMN_MIN,
+            MetricKind.COLUMN_MAX,
+        ):
+            if self.semantic_version != SEMANTIC_RANGES_VERSION:
+                raise ConfigurationError("range metrics require ranges/v1")
+            if self.group_by:
+                raise ConfigurationError("range metrics cannot specify groups")
+            if type(self.column) is not ColumnRef:
+                raise ConfigurationError("range metrics require a column")
+            return
         if self.semantic_version != SEMANTICS_VERSION:
             raise ConfigurationError("unsupported metric semantic version")
         if self.group_by:
@@ -221,6 +241,16 @@ class RuleSpec:
                     "group distinct target, and an integer threshold"
                 )
             return
+        if self.kind is RuleKind.VALUE_RANGE:
+            if (
+                type(self.column) is not ColumnRef
+                or self.group_by
+                or self.target not in (MetricKind.COLUMN_MIN, MetricKind.COLUMN_MAX)
+            ):
+                raise ConfigurationError(
+                    "value range requires a column and a column bound target"
+                )
+            return
         self._validate_counts_kind()
 
     def _validate_counts_kind(self):
@@ -269,6 +299,25 @@ class RuleSpec:
                     self.group_by,
                 ),
             )
+        if self.kind is RuleKind.VALUE_RANGE:
+            if self.target is MetricKind.COLUMN_MAX:
+                target_kind = MetricKind.COLUMN_MAX
+            else:
+                target_kind = MetricKind.COLUMN_MIN
+            return (
+                MetricKey(
+                    self.dataset,
+                    MetricKind.COLUMN_COUNT,
+                    self.column,
+                    SEMANTIC_RANGES_VERSION,
+                ),
+                MetricKey(
+                    self.dataset,
+                    target_kind,
+                    self.column,
+                    SEMANTIC_RANGES_VERSION,
+                ),
+            )
         return (rows, MetricKey(self.dataset, MetricKind.PRESENT_COUNT, self.column))
 
     def to_dict(self) -> dict:
@@ -285,6 +334,8 @@ class RuleSpec:
         }
         if self.kind is RuleKind.GROUPED_DISTINCT:
             document["group_by"] = [column.name for column in self.group_by]
+            document["target"] = self.target.value
+        if self.kind is RuleKind.VALUE_RANGE:
             document["target"] = self.target.value
         return document
 
@@ -374,7 +425,7 @@ class ExecutionPlan:
             )
 
     def evaluate(
-        self, values: dict[MetricKey, int], capabilities: CapabilitySet
+        self, values: dict, capabilities: CapabilitySet
     ) -> tuple[CheckOutcome, ...]:
         """Evaluate supplied global metrics; does not verify their dataset provenance.
 
@@ -391,10 +442,21 @@ class ExecutionPlan:
         if set(values) != set(self.metrics):
             raise ValidationError("execution must supply exactly the required metrics")
         for metric, value in values.items():
-            if type(value) is not int or not 0 <= value <= MAX_COUNT:
+            if self.semantic_version == SEMANTIC_RANGES_VERSION and metric.kind in (
+                MetricKind.COLUMN_MIN,
+                MetricKind.COLUMN_MAX,
+            ):
+                if type(value) is not Fraction:
+                    raise ValidationError(
+                        "range bounds must be exact Fractions, not "
+                        f"{type(value).__name__}"
+                    )
+            elif type(value) is not int or not 0 <= value <= MAX_COUNT:
                 raise ValidationError("metric counts must be unsigned 64-bit integers")
         if self.semantic_version == SEMANTIC_GROUPS_VERSION:
             return self._evaluate_grouped(values, capabilities)
+        if self.semantic_version == SEMANTIC_RANGES_VERSION:
+            return self._evaluate_ranges(values, capabilities)
         for metric, value in values.items():
             if (
                 metric.kind is MetricKind.PRESENT_COUNT
@@ -436,7 +498,7 @@ class ExecutionPlan:
         return normalize_outcomes(outcomes)
 
     def _evaluate_grouped(
-        self, values: dict[MetricKey, int], capabilities: CapabilitySet
+        self, values: dict, capabilities: CapabilitySet
     ) -> tuple[CheckOutcome, ...]:
         fingerprint = self.fingerprint
         outcomes = []
@@ -462,6 +524,47 @@ class ExecutionPlan:
                             "observed": {"numerator": numerator, "denominator": 1},
                             "reason": reason,
                             "semantic_version": SEMANTIC_GROUPS_VERSION,
+                            "plan_sha256": fingerprint,
+                            "adapter": {
+                                "name": capabilities.adapter,
+                                "version": capabilities.version,
+                            },
+                        },
+                    }
+                )
+            )
+        return normalize_outcomes(outcomes)
+
+    def _evaluate_ranges(
+        self, values: dict, capabilities: CapabilitySet
+    ) -> tuple[CheckOutcome, ...]:
+        fingerprint = self.fingerprint
+        outcomes = []
+        for rule in self.rules:
+            count_key, target_key = rule.required_metrics
+            value_count = values[count_key]
+            if value_count == 0:
+                success = True
+                reason = "no_values"
+                bound = Fraction(0)
+            else:
+                bound = values[target_key]
+                success = rule.predicate.matches(bound)
+                reason = "evaluated"
+            outcomes.append(
+                CheckOutcome(
+                    {
+                        "check": rule.rule_id,
+                        "rule_id": rule.rule_id,
+                        "success": success,
+                        "details": {
+                            **rule.to_dict(),
+                            "observed": {
+                                "numerator": bound.numerator,
+                                "denominator": bound.denominator,
+                            },
+                            "reason": reason,
+                            "semantic_version": SEMANTIC_RANGES_VERSION,
                             "plan_sha256": fingerprint,
                             "adapter": {
                                 "name": capabilities.adapter,

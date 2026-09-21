@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the ranges/v1 kernel contract (ADR-005): exact column count, minimum,
+  and maximum metrics with value-range rules that compare one bound as an
+  exact fraction, ignoring nulls and NaN and passing vacuously on empty
+  columns
+
 ### Changed
 
 - Consolidated test helpers into `dq.tests.helpers`, marked every module

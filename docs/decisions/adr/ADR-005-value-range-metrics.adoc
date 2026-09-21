@@ -1,0 +1,70 @@
+= ADR-005: Value-range metrics under ranges/v1
+:toc:
+:sectlinks.
+
+Status: Accepted +
+Date: 2026-09-21
+
+== Context
+
+Numeric range checks are part of the first portability parity set (ADR-002) and
+the first absorption candidate in ADR-003's map: the custom engine's
+``NonNegativeColumns`` and legacy ``isNonNegative``/``isInRange`` constraints
+assert that a column's stored values stay within bounds. The counts/v1 kernel
+cannot express them — its metrics are row and present counts, not value
+extrema — and groups/v1 (ADR-004) addresses grouping, not ranges.
+
+The semantic questions are narrow but load-bearing: what a bound is computed
+over (nulls, NaN), how bounds are represented exactly, and what happens when a
+column holds no values at all.
+
+== Decision
+
+Introduce ``ranges/v1`` as a sibling semantic version with a minimal
+threshold-independent metric set, mirroring the groups/v1 pattern.
+
+* Metric kinds: ``COLUMN_COUNT`` (non-null, non-NaN value count of one column),
+  ``COLUMN_MIN`` and ``COLUMN_MAX`` (the exact smallest and largest non-null,
+  non-NaN values). All three are per-column, carry no grouping, and are
+  computable in one distributed aggregate.
+* Bounds are supplied as exact ``Fraction`` values, never binary floats:
+  adapters convert Spark decimals exactly and render doubles through their
+  shortest exact decimal representation. The kernel compares bounds as exact
+  rationals, matching counts/v1's no-approximation doctrine.
+* New rule kind ``VALUE_RANGE``: one predicate bound to one target metric
+  (``COLUMN_MIN`` for lower bounds, ``COLUMN_MAX`` for upper bounds).
+  "Every value is at least ``l``" is ``min >= l``; ``isInRange(l, u)`` is
+  ``min >= l`` and ``max <= u`` — one legacy constraint translates into up to
+  two portable rules, exactly like the grouped pattern in ADR-004.
+* Thresholds are arbitrary finite Decimals (bounds may be negative or
+  fractional; only cardinalities are restricted to integers).
+* A rule requires exactly two metrics: ``COLUMN_COUNT`` and its target. When
+  the count is zero the rule passes vacuously with reason ``no_values`` —
+  there is no value to violate — and adapters supply 0 for the unread bound.
+* Plans remain single-semantics: mixing counts/v1, groups/v1, and ranges/v1
+  metrics in one plan is a configuration error. Capability negotiation is per
+  version.
+
+== Consequences
+
+The kernel now hosts three sibling semantic versions behind one dispatch;
+adding a version is a bounded, repeated pattern rather than an open-ended
+extension mechanism. Adapters must ignore nulls and NaN when computing bounds
+(Spark's own ``min``/``max`` rank NaN above every value, so adapters filter
+it explicitly) — this is where ranges/v1 and legacy Deequ semantics agree,
+unlike the completeness NaN divergence documented by the differential suite.
+Bounds derived from binary-float columns reflect the exact stored double
+rendered as its shortest decimal; truly exact bounds require decimal columns.
+
+We deliberately do not add per-value rows, two-sided single rules, or
+non-numeric bounds to ranges/v1.
+
+== Acceptance gates
+
+* Pure kernel contracts: construction, canonical identity, version pinning,
+  both bound directions, exact-fraction evaluation, and the vacuous path.
+* The Spark adapter computes bounds ignoring nulls and NaN through one
+  aggregate per column set, never collecting values.
+* Differential equivalence for the non-negative absorption: ranges/v1 rules
+  and the legacy ``NonNegativeColumns``/``isNonNegative`` semantics decide
+  identically over shared fixtures, including empty and all-null columns.
