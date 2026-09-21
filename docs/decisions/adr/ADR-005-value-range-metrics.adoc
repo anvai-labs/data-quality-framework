@@ -63,8 +63,11 @@ non-numeric bounds to ranges/v1.
 
 * Pure kernel contracts: construction, canonical identity, version pinning,
   both bound directions, exact-fraction evaluation, and the vacuous path.
+  *Implemented 2026-09-21.*
 * The Spark adapter computes bounds ignoring nulls and NaN through one
-  aggregate per column set, never collecting values.
+  aggregate per dataset, never collecting values; infinite bounds fail
+  closed as a documented limitation. *Implemented 2026-09-21.*
 * Differential equivalence for the non-negative absorption: ranges/v1 rules
-  and the legacy ``NonNegativeColumns``/``isNonNegative`` semantics decide
-  identically over shared fixtures, including empty and all-null columns.
+  and the legacy ``NoNegativeValues`` constraint decide identically over
+  shared fixtures, including empty and all-null columns. *Implemented
+  2026-09-21.*

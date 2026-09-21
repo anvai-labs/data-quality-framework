@@ -33,7 +33,14 @@ from dq.plan import (
 )
 
 SUPPORTED_CONSTRAINTS = frozenset(
-    {"isComplete", "hasCompleteness", "hasSize", "DistinctnessByGroup"}
+    {
+        "isComplete",
+        "hasCompleteness",
+        "hasSize",
+        "DistinctnessByGroup",
+        "isNonNegative",
+        "isInRange",
+    }
 )
 
 _COMPARISONS = {
@@ -104,6 +111,8 @@ def _translate_check(
 
     if constraint == "DistinctnessByGroup":
         return _translate_grouped(check, rule_id, dataset, severity)
+    if constraint in ("isNonNegative", "isInRange"):
+        return _translate_range_check(check, rule_id, constraint, dataset, severity)
 
     for rejected in ("kwargs", "hint", "columns"):
         if check.get(rejected, None) is not None:
@@ -286,3 +295,54 @@ def _parse_comparison(assertion, rule_id):
             f"check {rule_id!r} assertion threshold must be finite"
         )
     return _COMPARISONS[type(operator)], Decimal(str(value))
+
+
+def _translate_range_check(
+    check, rule_id, constraint, dataset: DatasetRef, severity: Severity
+) -> tuple[RuleSpec, ...]:
+    """Translate isNonNegative/isInRange into value-range rules.
+
+    ``isNonNegative`` becomes one lower-bound rule (column minimum >= 0);
+    ``isInRange`` becomes up to two rules (a ``.low`` lower bound and a
+    ``.high`` upper bound). Bounds are exact decimal literals.
+    """
+    for rejected in ("kwargs", "hint", "assertion", "columns", "group_by"):
+        if check.get(rejected, None) is not None:
+            raise ConfigurationError(
+                f"check {rule_id!r} cannot translate {rejected!r} into "
+                "ranges/v1; keep this rule on the legacy engine path"
+            )
+    column = check.get("column", None)
+    if type(column) is not str:
+        raise ConfigurationError(
+            f"check {rule_id!r} requires exactly one string column for {constraint}"
+        )
+    column_ref = ColumnRef(column)
+
+    def bounded_rule(suffix, operator, threshold, target):
+        return RuleSpec(
+            f"{rule_id}.{suffix}",
+            dataset,
+            RuleKind.VALUE_RANGE,
+            Predicate(operator, Decimal(str(threshold))),
+            column_ref,
+            severity,
+            target=target,
+        )
+
+    if constraint == "isNonNegative":
+        return (bounded_rule("low", Comparison.GE, 0, MetricKind.COLUMN_MIN),)
+    minimum = check.get("min", None)
+    maximum = check.get("max", None)
+    if minimum is None and maximum is None:
+        raise ConfigurationError(
+            f"check {rule_id!r} isInRange requires a min or max bound"
+        )
+    rules = []
+    if minimum is not None:
+        rules.append(bounded_rule("low", Comparison.GE, minimum, MetricKind.COLUMN_MIN))
+    if maximum is not None:
+        rules.append(
+            bounded_rule("high", Comparison.LE, maximum, MetricKind.COLUMN_MAX)
+        )
+    return tuple(rules)

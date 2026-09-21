@@ -41,7 +41,14 @@ def check(**overrides):
 
 def test_supported_subset_is_exactly_the_representable_rules():
     assert SUPPORTED_CONSTRAINTS == frozenset(
-        {"isComplete", "hasCompleteness", "hasSize", "DistinctnessByGroup"}
+        {
+            "isComplete",
+            "hasCompleteness",
+            "hasSize",
+            "DistinctnessByGroup",
+            "isNonNegative",
+            "isInRange",
+        }
     )
 
 
@@ -394,6 +401,58 @@ def test_translate_plan_rejects_mixed_semantic_versions():
     ]
     with pytest.raises(ConfigurationError, match="mix"):
         translate_plan(checks, DATASET)
+
+
+def test_translates_is_non_negative_into_a_lower_bound_rule():
+    (rule,) = translate_checks(
+        [
+            {
+                "alias": "amount_check",
+                "constraint": "isNonNegative",
+                "column": "amount",
+                "level": "Error",
+            }
+        ],
+        DATASET,
+    )
+    assert rule.rule_id == "amount_check.low"
+    assert rule.kind is RuleKind.VALUE_RANGE
+    assert rule.target is MetricKind.COLUMN_MIN
+    assert rule.predicate.operator is Comparison.GE
+    assert rule.predicate.threshold == Decimal(0)
+
+
+def test_translates_is_in_range_into_low_and_high_rules():
+    low, high = translate_checks(
+        [
+            {
+                "alias": "amount_range",
+                "constraint": "isInRange",
+                "column": "amount",
+                "min": -5,
+                "max": 2.5,
+            }
+        ],
+        DATASET,
+    )
+    assert low.rule_id == "amount_range.low"
+    assert low.predicate.operator is Comparison.GE
+    assert low.predicate.threshold == Decimal(-5)
+    assert low.target is MetricKind.COLUMN_MIN
+    assert high.rule_id == "amount_range.high"
+    assert high.predicate.operator is Comparison.LE
+    assert high.predicate.threshold == Decimal("2.5")
+    assert high.target is MetricKind.COLUMN_MAX
+
+
+def test_rejects_range_checks_without_bounds_or_column():
+    base = {"alias": "r", "constraint": "isInRange", "column": "amount"}
+    with pytest.raises(ConfigurationError, match="min or max"):
+        translate_checks([base], DATASET)
+    with pytest.raises(ConfigurationError, match="string column"):
+        translate_checks([dict(base, min=1, column=7)], DATASET)
+    with pytest.raises(ConfigurationError, match="assertion"):
+        translate_checks([dict(base, min=1, assertion="lambda x: x")], DATASET)
 
 
 def test_translator_imports_without_optional_dependencies():

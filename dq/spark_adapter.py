@@ -17,11 +17,18 @@ caller-supplied snapshot identity; this adapter does not verify content.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from fractions import Fraction
 from typing import TYPE_CHECKING
 
 from dq.exceptions import ConfigurationError
 from dq.outcomes import CheckOutcome
-from dq.plan import CapabilitySet, ExecutionPlan, MetricKind, SEMANTIC_GROUPS_VERSION
+from dq.plan import (
+    CapabilitySet,
+    ExecutionPlan,
+    MetricKind,
+    SEMANTIC_GROUPS_VERSION,
+    SEMANTIC_RANGES_VERSION,
+)
 
 if TYPE_CHECKING:
     from pyspark.sql import DataFrame
@@ -45,25 +52,43 @@ GROUP_CAPABILITIES = CapabilitySet(
     ),
     SEMANTIC_GROUPS_VERSION,
 )
+RANGES_CAPABILITIES = CapabilitySet(
+    ADAPTER_NAME,
+    ADAPTER_VERSION,
+    frozenset(
+        {
+            MetricKind.COLUMN_COUNT,
+            MetricKind.COLUMN_MIN,
+            MetricKind.COLUMN_MAX,
+        }
+    ),
+    SEMANTIC_RANGES_VERSION,
+)
 
 _MAX_LISTED_COLUMNS = 8
+
+
+def _capabilities_for(plan: ExecutionPlan) -> CapabilitySet:
+    if plan.semantic_version == SEMANTIC_GROUPS_VERSION:
+        return GROUP_CAPABILITIES
+    if plan.semantic_version == SEMANTIC_RANGES_VERSION:
+        return RANGES_CAPABILITIES
+    return CAPABILITIES
 
 
 def execute_plan(
     plan: ExecutionPlan, datasets: Mapping[str, DataFrame]
 ) -> tuple[CheckOutcome, ...]:
     """Compute the plan's metrics with Spark and evaluate exact outcomes."""
-    capabilities = (
-        GROUP_CAPABILITIES
-        if plan.semantic_version == SEMANTIC_GROUPS_VERSION
-        else CAPABILITIES
-    )
+    capabilities = _capabilities_for(plan)
     plan.validate_for(capabilities)
     bindings = _validated_bindings(plan, datasets)
     values = {}
     for name in sorted(bindings):
         if plan.semantic_version == SEMANTIC_GROUPS_VERSION:
             values.update(_dataset_group_metrics(name, bindings[name], plan))
+        elif plan.semantic_version == SEMANTIC_RANGES_VERSION:
+            values.update(_dataset_range_metrics(name, bindings[name], plan))
         else:
             values.update(_dataset_counts(name, bindings[name], plan))
     return plan.evaluate(values, capabilities)
@@ -215,4 +240,85 @@ def _dataset_group_metrics(name: str, dataframe, plan: ExecutionPlan) -> dict:
                 values[metric] = int(
                     summary[f"dq_max_{column_index[metric.column.name]}"]
                 )
+    return values
+
+
+def _as_exact_fraction(value, name: str, column: str):
+    """Convert a Spark bound to an exact Fraction; refuse infinite bounds."""
+    import decimal
+
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return Fraction(value)
+    if isinstance(value, decimal.Decimal):
+        return Fraction(value)
+    if isinstance(value, float):
+        import math
+
+        if math.isinf(value):
+            raise ConfigurationError(
+                f"column {column!r} in dataset {name!r} has an infinite "
+                "bound; ranges/v1 bounds must be finite"
+            )
+        return Fraction(decimal.Decimal(str(value)))
+    raise ConfigurationError(
+        f"column {column!r} in dataset {name!r} produced a bound of an "
+        f"unsupported type: {type(value).__name__}"
+    )
+
+
+def _dataset_range_metrics(name: str, dataframe, plan: ExecutionPlan) -> dict:
+    """Compute value-range bounds, one aggregate per dataset.
+
+    Nulls and NaN are excluded from the count and the bounds; bounds are
+    converted to exact fractions (binary-float bounds render through their
+    shortest decimal, and infinite bounds fail closed). The driver
+    receives one summary row per dataset — never column values.
+    """
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import DoubleType, FloatType
+
+    metrics = [metric for metric in plan.metrics if metric.dataset.name == name]
+    columns = sorted({metric.column.name for metric in metrics if metric.column})
+    for column in columns:
+        _require_exact_column(dataframe, name, column)
+
+    aggregates = []
+    column_index = {column: index for index, column in enumerate(columns)}
+    for index, column in enumerate(columns):
+        field = _require_exact_column(dataframe, name, column)
+        comparable = F.col(column)
+        if isinstance(field.dataType, (FloatType, DoubleType)):
+            # Spark ranks NaN above every value, so min/max would return it
+            # unless the comparison values are filtered explicitly.
+            comparable = F.when(
+                ~(F.col(column).isNull() | F.isnan(F.col(column))), F.col(column)
+            )
+        else:
+            comparable = F.when(F.col(column).isNotNull(), F.col(column))
+        aggregates.extend(
+            [
+                F.count(comparable).alias(f"dq_count_{index}"),
+                F.min(comparable).alias(f"dq_min_{index}"),
+                F.max(comparable).alias(f"dq_max_{index}"),
+            ]
+        )
+    summary = dataframe.agg(*aggregates).head()
+
+    values = {}
+    for metric in metrics:
+        index = column_index[metric.column.name]
+        if metric.kind is MetricKind.COLUMN_COUNT:
+            values[metric] = int(summary[f"dq_count_{index}"])
+            continue
+        raw = summary[
+            (
+                f"dq_min_{index}"
+                if metric.kind is MetricKind.COLUMN_MIN
+                else f"dq_max_{index}"
+            )
+        ]
+        bound = _as_exact_fraction(raw, name, metric.column.name)
+        values[metric] = Fraction(0) if bound is None else bound
     return values
