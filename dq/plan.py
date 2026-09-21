@@ -6,6 +6,9 @@
 This opt-in API neither translates legacy HOCON nor executes datasets. Adapters
 must compute global counts for the bound snapshot and advertise counts/v1 only
 after proving null/NaN, empty-input, and partition invariance contracts.
+Groups/v1 adds grouped distinct-count bounds (ADR-004): three exact
+threshold-independent metrics per (column, grouping) and rules that compare one
+bound, passing vacuously on empty input exactly like the legacy constraint.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ from dq.exceptions import ConfigurationError, ValidationError
 from dq.outcomes import CheckOutcome, normalize_outcomes
 
 SEMANTICS_VERSION = "counts/v1"
+SEMANTIC_GROUPS_VERSION = "groups/v1"
 MAX_RULES = 10_000
 MAX_COUNT = 2**64 - 1
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
@@ -45,11 +49,15 @@ def _text(value: str, label: str) -> None:
 class MetricKind(Enum):
     ROW_COUNT = "row_count"
     PRESENT_COUNT = "present_count"
+    GROUP_COUNT = "group_count"
+    GROUP_MIN_DISTINCT = "group_min_distinct"
+    GROUP_MAX_DISTINCT = "group_max_distinct"
 
 
 class RuleKind(Enum):
     SIZE = "size"
     COMPLETENESS = "completeness"
+    GROUPED_DISTINCT = "grouped_distinct"
 
 
 class Comparison(Enum):
@@ -135,15 +143,38 @@ class MetricKey:
     kind: MetricKind
     column: ColumnRef | None = None
     semantic_version: str = SEMANTICS_VERSION
+    group_by: tuple[ColumnRef, ...] = ()
 
     def __post_init__(self):
-        if (
-            type(self.semantic_version) is not str
-            or self.semantic_version != SEMANTICS_VERSION
-        ):
+        if type(self.semantic_version) is not str:
             raise ConfigurationError("unsupported metric semantic version")
         if type(self.dataset) is not DatasetRef or type(self.kind) is not MetricKind:
             raise ConfigurationError("metric requires typed dataset and kind")
+        if self.kind in (
+            MetricKind.GROUP_COUNT,
+            MetricKind.GROUP_MIN_DISTINCT,
+            MetricKind.GROUP_MAX_DISTINCT,
+        ):
+            if self.semantic_version != SEMANTIC_GROUPS_VERSION:
+                raise ConfigurationError("group metrics require groups/v1")
+            if (
+                type(self.group_by) is not tuple
+                or not self.group_by
+                or any(type(column) is not ColumnRef for column in self.group_by)
+            ):
+                raise ConfigurationError("group metrics require grouped columns")
+            if len(set(self.group_by)) != len(self.group_by):
+                raise ConfigurationError("group metrics reject duplicate columns")
+            if self.kind is MetricKind.GROUP_COUNT:
+                if self.column is not None:
+                    raise ConfigurationError("group count cannot specify a column")
+            elif type(self.column) is not ColumnRef:
+                raise ConfigurationError("group distinct requires a column")
+            return
+        if self.semantic_version != SEMANTICS_VERSION:
+            raise ConfigurationError("unsupported metric semantic version")
+        if self.group_by:
+            raise ConfigurationError("counts/v1 metrics cannot specify groups")
         if self.kind is MetricKind.ROW_COUNT:
             if self.column is not None:
                 raise ConfigurationError("row count cannot specify a column")
@@ -159,6 +190,8 @@ class RuleSpec:
     predicate: Predicate
     column: ColumnRef | None = None
     severity: Severity = Severity.ERROR
+    group_by: tuple[ColumnRef, ...] = ()
+    target: MetricKind | None = None
 
     def __post_init__(self):
         _identifier(self.rule_id, "rule ID", _RULE_ID)
@@ -171,19 +204,42 @@ class RuleSpec:
             raise ConfigurationError(
                 "rule requires typed dataset, kind, predicate, severity"
             )
-        if self.kind is RuleKind.SIZE:
+        if self.kind is RuleKind.GROUPED_DISTINCT:
+            threshold = self.predicate.threshold
+            if (
+                type(self.column) is not ColumnRef
+                or type(self.group_by) is not tuple
+                or not self.group_by
+                or any(type(column) is not ColumnRef for column in self.group_by)
+                or self.target
+                not in (MetricKind.GROUP_MIN_DISTINCT, MetricKind.GROUP_MAX_DISTINCT)
+                or not 0 <= threshold <= MAX_COUNT
+                or threshold != threshold.to_integral_value()
+            ):
+                raise ConfigurationError(
+                    "grouped distinct requires a column, grouped columns, a "
+                    "group distinct target, and an integer threshold"
+                )
+            return
+        self._validate_counts_kind()
+
+    def _validate_counts_kind(self):
+        if self.kind is not RuleKind.COMPLETENESS:
             threshold = self.predicate.threshold
             if (
                 self.column is not None
+                or self.group_by
+                or self.target is not None
                 or not 0 <= threshold <= MAX_COUNT
                 or threshold != threshold.to_integral_value()
             ):
                 raise ConfigurationError(
                     "size requires an integer threshold and no column"
                 )
-        elif (
-            type(self.column) is not ColumnRef or not 0 <= self.predicate.threshold <= 1
-        ):
+            return
+        if self.group_by or self.target is not None:
+            raise ConfigurationError("completeness cannot target grouped metrics")
+        if type(self.column) is not ColumnRef or not 0 <= self.predicate.threshold <= 1:
             raise ConfigurationError(
                 "completeness requires a column and threshold in [0,1]"
             )
@@ -193,10 +249,30 @@ class RuleSpec:
         rows = MetricKey(self.dataset, MetricKind.ROW_COUNT)
         if self.kind is RuleKind.SIZE:
             return (rows,)
+        if self.kind is RuleKind.GROUPED_DISTINCT:
+            if self.target is MetricKind.GROUP_MAX_DISTINCT:
+                target_kind = MetricKind.GROUP_MAX_DISTINCT
+            else:
+                target_kind = MetricKind.GROUP_MIN_DISTINCT
+            return (
+                MetricKey(
+                    self.dataset,
+                    MetricKind.GROUP_COUNT,
+                    semantic_version=SEMANTIC_GROUPS_VERSION,
+                    group_by=self.group_by,
+                ),
+                MetricKey(
+                    self.dataset,
+                    target_kind,
+                    self.column,
+                    SEMANTIC_GROUPS_VERSION,
+                    self.group_by,
+                ),
+            )
         return (rows, MetricKey(self.dataset, MetricKind.PRESENT_COUNT, self.column))
 
     def to_dict(self) -> dict:
-        return {
+        document = {
             "rule_id": self.rule_id,
             "dataset": {"name": self.dataset.name, "sha256": self.dataset.sha256},
             "kind": self.kind.value,
@@ -207,6 +283,10 @@ class RuleSpec:
             },
             "severity": self.severity.value,
         }
+        if self.kind is RuleKind.GROUPED_DISTINCT:
+            document["group_by"] = [column.name for column in self.group_by]
+            document["target"] = self.target.value
+        return document
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +314,7 @@ class ExecutionPlan:
 
     rules: tuple[RuleSpec, ...]
     metrics: tuple[MetricKey, ...] = field(init=False)
+    semantic_version: str = field(init=False)
     _fingerprint: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
@@ -252,8 +333,12 @@ class ExecutionPlan:
         metrics = tuple(
             dict.fromkeys(metric for rule in rules for metric in rule.required_metrics)
         )
+        versions = {metric.semantic_version for metric in metrics}
+        if len(versions) != 1:
+            raise ConfigurationError("plan cannot mix metric semantic versions")
         object.__setattr__(self, "rules", rules)
         object.__setattr__(self, "metrics", metrics)
+        object.__setattr__(self, "semantic_version", versions.pop())
         object.__setattr__(
             self,
             "_fingerprint",
@@ -263,7 +348,7 @@ class ExecutionPlan:
     def canonical_json(self) -> str:
         return json.dumps(
             {
-                "semantic_version": SEMANTICS_VERSION,
+                "semantic_version": self.semantic_version,
                 "rules": [rule.to_dict() for rule in self.rules],
             },
             sort_keys=True,
@@ -281,7 +366,7 @@ class ExecutionPlan:
     def validate_for(self, capabilities: CapabilitySet) -> None:
         if (
             type(capabilities) is not CapabilitySet
-            or capabilities.semantic_version != SEMANTICS_VERSION
+            or capabilities.semantic_version != self.semantic_version
             or not {metric.kind for metric in self.metrics} <= capabilities.metrics
         ):
             raise ConfigurationError(
@@ -295,7 +380,9 @@ class ExecutionPlan:
 
         Counts/v1 counts all rows; present excludes null and floating-point NaN.
         Completeness is present/rows, compared exactly, and fails on empty input.
-        No rule severity can convert a failed outcome to passing v1 evidence.
+        Groups/v1 compares grouped distinct bounds exactly and passes vacuously
+        on empty input. No rule severity can convert a failed outcome to passing
+        v1 evidence.
         """
         self.validate_for(capabilities)
         if type(values) is not dict or len(values) != len(self.metrics):
@@ -306,6 +393,8 @@ class ExecutionPlan:
         for metric, value in values.items():
             if type(value) is not int or not 0 <= value <= MAX_COUNT:
                 raise ValidationError("metric counts must be unsigned 64-bit integers")
+        if self.semantic_version == SEMANTIC_GROUPS_VERSION:
+            return self._evaluate_grouped(values, capabilities)
         for metric, value in values.items():
             if (
                 metric.kind is MetricKind.PRESENT_COUNT
@@ -335,6 +424,44 @@ class ExecutionPlan:
                             "observed": observed,
                             "reason": "evaluated" if denominator else "empty_dataset",
                             "semantic_version": SEMANTICS_VERSION,
+                            "plan_sha256": fingerprint,
+                            "adapter": {
+                                "name": capabilities.adapter,
+                                "version": capabilities.version,
+                            },
+                        },
+                    }
+                )
+            )
+        return normalize_outcomes(outcomes)
+
+    def _evaluate_grouped(
+        self, values: dict[MetricKey, int], capabilities: CapabilitySet
+    ) -> tuple[CheckOutcome, ...]:
+        fingerprint = self.fingerprint
+        outcomes = []
+        for rule in self.rules:
+            count_key, target_key = rule.required_metrics
+            group_count = values[count_key]
+            if group_count == 0:
+                success = True
+                reason = "no_groups"
+                numerator = 0
+            else:
+                numerator = values[target_key]
+                success = rule.predicate.matches(Fraction(numerator))
+                reason = "evaluated"
+            outcomes.append(
+                CheckOutcome(
+                    {
+                        "check": rule.rule_id,
+                        "rule_id": rule.rule_id,
+                        "success": success,
+                        "details": {
+                            **rule.to_dict(),
+                            "observed": {"numerator": numerator, "denominator": 1},
+                            "reason": reason,
+                            "semantic_version": SEMANTIC_GROUPS_VERSION,
                             "plan_sha256": fingerprint,
                             "adapter": {
                                 "name": capabilities.adapter,
