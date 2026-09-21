@@ -8,10 +8,10 @@ from pydeequ.repository import ResultKey
 
 from dq.engine.dq_engine import DQEngine
 from dq.engine.custom.strategies import (
-    ColumnNamesInReferenceStrategy,
+    ColumnNamesInReferenceTableStrategy,
     ConsecutivePercentChangeStrategy,
     GroupedDistinctBoundsStrategy,
-    NonNegativeColumnsStrategy,
+    NoNegativeValuesStrategy,
 )
 
 from dq.utils import repository_utils, constants
@@ -26,8 +26,8 @@ class CustomEngine(DQEngine):
 
     * ``GroupedDistinctBounds`` -- validates distinct counts within groups
     * ``ConsecutivePercentChange`` -- bounds the change between consecutive rows
-    * ``ColumnNamesInReference`` -- checks column names against a reference table
-    * ``NonNegativeColumns`` -- finds negative values across all columns
+    * ``ColumnNamesInReferenceTable`` -- checks column names against a reference table
+    * ``NoNegativeValues`` -- finds negative values across all columns
 
     The constraint set is frozen (ADR-003): rule packs depend on these names
     and on the exact metric/verification shapes, so the engine is a permanent
@@ -44,15 +44,15 @@ class CustomEngine(DQEngine):
     _STRATEGIES = {
         "GroupedDistinctBounds": GroupedDistinctBoundsStrategy(),
         "ConsecutivePercentChange": ConsecutivePercentChangeStrategy(),
-        "ColumnNamesInReference": ColumnNamesInReferenceStrategy(),
-        "NonNegativeColumns": NonNegativeColumnsStrategy(),
+        "ColumnNamesInReferenceTable": ColumnNamesInReferenceTableStrategy(),
+        "NoNegativeValues": NoNegativeValuesStrategy(),
     }
 
     _LEGACY_ALIASES = {
         "DistinctnessByGroup": "GroupedDistinctBounds",
         "RateOfChange": "ConsecutivePercentChange",
-        "LookupBasedOnColumnNameList": "ColumnNamesInReference",
-        "WideTablesNegativeValuesCheck": "NonNegativeColumns",
+        "LookupBasedOnColumnNameList": "ColumnNamesInReferenceTable",
+        "WideTablesNegativeValuesCheck": "NoNegativeValues",
     }
 
     def __init__(self, config, dqts: Optional[int] = None):
@@ -110,14 +110,14 @@ class CustomEngine(DQEngine):
                     threshold_min=check_config.get("min", None),
                     threshold_max=check_config.get("max", None),
                 )
-            elif canonical == "ColumnNamesInReference":
+            elif canonical == "ColumnNamesInReferenceTable":
                 params.update(
                     ref_table=check_config.get("ref_table", None),
                     ref_columns=check_config.get("ref_columns", None),
                     ignore_columns=check_config.get("ignore_columns", None),
                     source=check_config.get("source", None),
                 )
-            elif canonical == "NonNegativeColumns":
+            elif canonical == "NoNegativeValues":
                 params.update(
                     ignore_columns=check_config.get("ignore_columns", None),
                     source=check_config.get("source", None),

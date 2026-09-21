@@ -76,8 +76,8 @@ freeze is amended, not lifted. The canonical names are:
 
 * ``GroupedDistinctBounds`` (was ``DistinctnessByGroup``)
 * ``ConsecutivePercentChange`` (was ``RateOfChange``)
-* ``ColumnNamesInReference`` (was ``LookupBasedOnColumnNameList``)
-* ``NonNegativeColumns`` (was ``WideTablesNegativeValuesCheck``)
+* ``ColumnNamesInReferenceTable`` (was ``LookupBasedOnColumnNameList``)
+* ``NoNegativeValues`` (was ``WideTablesNegativeValuesCheck``)
 
 The legacy names remain accepted aliases that must keep producing
 byte-identical metric and verification rows, including their historical

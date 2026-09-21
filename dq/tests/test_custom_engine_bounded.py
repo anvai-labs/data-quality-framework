@@ -358,6 +358,32 @@ def test_canonical_names_run_with_canonical_instance_strings(spark):
     assert results[0]["success"] is False
 
 
+def test_canonical_negative_values_and_reference_table_names_run(spark):
+    frame = spark.createDataFrame(
+        [(1.0, -5.0, "text")], ["positive", "negative", "label"]
+    )
+    config = ConfigFactory.parse_string("""
+        sync { checks = [ {
+            constraint_name = "Negative_values"
+            constraint = "NoNegativeValues"
+            source = "timeSeries"
+            level = "Warning"
+        } ] }
+        """).get("sync", {})
+    by_instance = summaries_by_instance(CustomEngine(config).apply(frame))
+    assert by_instance["NoNegativeValues for negative "]["success"] is False
+    assert by_instance["NoNegativeValues for positive "]["success"] is True
+
+    spark.createDataFrame([("label",)], ["item_id"]).createOrReplaceTempView(
+        "ref_tbl_canonical"
+    )
+    lookup_frame = spark.createDataFrame([("a", 1)], ["item_id", "qty"])
+    lookup = lookup_config("ref_tbl_canonical")
+    lookup["checks"][0]["constraint"] = "ColumnNamesInReferenceTable"
+    results = CustomEngine(lookup).apply(lookup_frame)
+    assert results[0]["details"]["instance"].startswith("ColumnNamesInReferenceTable ")
+
+
 def test_legacy_aliases_keep_their_historical_output(spark, caplog):
     frame = spark.createDataFrame(_GROUPS_DATA, _GROUPS_SCHEMA)
     legacy_config = distinctness_config(["id"], ["region"], 2, 3)

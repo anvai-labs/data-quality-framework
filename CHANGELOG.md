@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (ADR-003), and added fail-closed validation of reference table and column
   identifiers before Spark SQL is built
 - Renamed the custom constraints to canonical names (`GroupedDistinctBounds`,
-  `ConsecutivePercentChange`, `ColumnNamesInReference`, `NonNegativeColumns`);
+  `ConsecutivePercentChange`, `ColumnNamesInReferenceTable`, `NoNegativeValues`);
   the previous names remain accepted aliases that emit their historical rows and
   a deprecation warning
 - Replaced domain-specific test fixture vocabulary with neutral structural names

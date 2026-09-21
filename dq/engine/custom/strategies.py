@@ -286,7 +286,7 @@ class ConsecutivePercentChangeStrategy:
         return metric_results, check_verifications
 
 
-class ColumnNamesInReferenceStrategy:
+class ColumnNamesInReferenceTableStrategy:
     """Check if DataFrame column names are present as rows in a reference table.
 
     Matches the schema-sized column-name list against the reference table
@@ -309,12 +309,12 @@ class ColumnNamesInReferenceStrategy:
         logger.debug("Running LookupBasedOnColumnNameList constraint")
         if type(ref_table) is not str or not _TABLE_PATTERN.match(ref_table):
             raise ConfigurationError(
-                "LookupBasedOnColumnNameList ref_table must be a one-to-three "
+                "ColumnNamesInReferenceTable ref_table must be a one-to-three "
                 f"part alphanumeric identifier, not {ref_table!r}"
             )
         if type(ref_columns) is not str or not _COLUMN_PATTERN.match(ref_columns):
             raise ConfigurationError(
-                "LookupBasedOnColumnNameList ref_columns must be a single "
+                "ColumnNamesInReferenceTable ref_columns must be a single "
                 f"alphanumeric identifier, not {ref_columns!r}"
             )
         if ignore_columns and len(ignore_columns) > 0:
@@ -371,7 +371,7 @@ class ColumnNamesInReferenceStrategy:
         return metric_results, check_verifications
 
 
-class NonNegativeColumnsStrategy:
+class NoNegativeValuesStrategy:
     """Check for negative values across all numeric columns in a wide table.
 
     One aggregate row carries every column's negative count, so the driver
