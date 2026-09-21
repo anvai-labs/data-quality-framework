@@ -77,6 +77,10 @@ Extension compatibility is explicit:
 * The custom constraint surface is frozen by ADR-003: its canonical names are
   permanent contracts, and new constraints require kernel-backed semantics
   first.
+* Persistence belongs to sinks: engines hand bounded artifacts to the
+  injected `OutcomeSink`, durable backends implement `run_scope` so a run is
+  one transaction (ADR-006), and drivers are injected by deployment — the
+  framework never holds credentials or imports storage drivers.
 
 == Configuration loading
 
@@ -344,6 +348,7 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:decisions/adr/ADR-003-custom-constraint-adapter.adoc[ADR-003: custom constraint adapter]
 * link:decisions/adr/ADR-004-grouped-metric-requests.adoc[ADR-004: grouped metric requests]
 * link:decisions/adr/ADR-005-value-range-metrics.adoc[ADR-005: value-range metrics]
+* link:decisions/adr/ADR-006-durable-postgres-sink.adoc[ADR-006: durable PostgreSQL sink]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]

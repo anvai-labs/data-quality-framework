@@ -214,3 +214,30 @@ def test_repository_sink_catalog_table_lane_creates_then_appends(spark, tmp_path
 
 
 pytestmark = pytest.mark.spark
+
+
+def test_framework_persists_through_the_sink_to_files(spark, tmp_path):
+    from dq.dq_framework import DQFramework
+
+    config = f"""
+    dqframework {{
+      dqrules = [ {{
+        name = "sink_lane"
+        engine = "custom"
+        checks = [ {{ constraint = "DistinctnessByGroup", columns = ["id"], group_by = ["region"], min = 1, level = "Error" }} ]
+      }} ]
+      repository {{
+        dataset = "bars"
+        format = "parquet"
+        file {{ paths = ["{tmp_path}"] }}
+      }}
+    }}
+    """
+    frame = spark.createDataFrame([("east", "a"), ("west", "b")], ["region", "id"])
+    results = DQFramework(spark, config, default_dataframe=frame).run()
+    assert results, "the run produces validated outcomes"
+    written = spark.read.parquet(str(tmp_path / "metrics"))
+    assert written.count() == 1, "one bounded summary per column"
+    assert {"dqts", "dataset", "year"} <= set(written.columns)
+    verifications = spark.read.parquet(str(tmp_path / "verifications"))
+    assert verifications.count() >= 1

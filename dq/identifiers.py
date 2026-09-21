@@ -73,6 +73,10 @@ class TableName:
     def quoted(self) -> str:
         return ".".join(f"`{part}`" for part in self.parts)
 
+    @property
+    def quoted_pg(self) -> str:
+        return ".".join(f'"{part}"' for part in self.parts)
+
 
 @dataclass(frozen=True, slots=True)
 class ColumnName:
@@ -90,6 +94,10 @@ class ColumnName:
     @property
     def quoted(self) -> str:
         return f"`{self.value}`"
+
+    @property
+    def quoted_pg(self) -> str:
+        return f'"{self.value}"'
 
 
 def qualified_table_name(

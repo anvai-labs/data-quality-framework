@@ -16,7 +16,9 @@ storage tuning belongs to deployment configuration.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from dataclasses import dataclass
+from typing import Optional
 
 from dq.exceptions import ConfigurationError, RepositoryError
 from dq.identifiers import TableName
@@ -54,6 +56,16 @@ class OutcomeSink(ABC):
             A bounded :class:`WriteResult` describing the write.
         """
         raise NotImplementedError
+
+    def run_scope(self, run_key: int, identity=None):
+        """Optionally scope saves into one durable, all-or-nothing run.
+
+        The default is per-save autocommit. Durable sinks override this to
+        make every ``save`` inside the scope join one transaction that
+        commits on clean exit and rolls back on any exception, so a partial
+        run never becomes visible evidence (ADR-006).
+        """
+        return nullcontext()
 
 
 class InMemorySink(OutcomeSink):
@@ -163,8 +175,16 @@ def sink_from_config(repoconfig) -> OutcomeSink | None:
     """Build the production sink from repository configuration.
 
     Returns ``None`` for empty configuration, which callers treat as
-    "do not persist".
+    "do not persist". ``type = "postgres"`` builds the durable sink
+    (ADR-006); any other type fails closed.
     """
     if not repoconfig:
         return None
-    return RepositorySink(repoconfig)
+    kind = repoconfig.get("type", None)
+    if kind is None:
+        return RepositorySink(repoconfig)
+    if kind == "postgres":
+        from dq.postgres_sink import PostgresOutcomeSink
+
+        return PostgresOutcomeSink.from_config(repoconfig)
+    raise ConfigurationError(f"repository sink type {kind!r} is not supported")

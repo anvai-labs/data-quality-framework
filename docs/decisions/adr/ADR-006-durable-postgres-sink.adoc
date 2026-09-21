@@ -1,0 +1,127 @@
+= ADR-006: Durable outcome sink on PostgreSQL
+:toc:
+:sectlinks.
+
+Status: Proposed (deployment co-design open; the driver-neutral port slice is
+implemented and certified on main) +
+Date: 2026-09-21
+
+== Context
+
+U6 delivered the outcome sink port (`dq.sinks`) with an idempotency contract
+and file/catalog storage, but ADR-002's durable substrate — queryable run
+identity, versioned plans, metric summaries, outcomes, and provenance in
+PostgreSQL — remained proposed. The admission and promotion gates that the
+consumer track depends on need a stable, SQL-queryable evidence surface, not
+partitioned files.
+
+Designed from first principles, a durable evidence store must guarantee:
+
+* *Atomicity* — a run is visible entirely or not at all; a partial run must
+  never become passing evidence.
+* *Immutability* — persisted evidence is append-only; the first write under a
+  key wins and nothing mutates it afterwards.
+* *Identity* — every artifact joins to a run identity carried by an
+  idempotency key derived from the execution, so workers can retry safely.
+* *Auditability* — consumers query by run, dataset, and artifact type with
+  SQL alone, without this framework installed.
+* *Credential hygiene* — the framework never holds secrets; connections come
+  from the deployment.
+
+== Decision
+
+Extend the sink port with an optional run scope, and add a driver-neutral
+PostgreSQL sink behind it.
+
+* *Run scope*: `OutcomeSink.run_scope(run_key, identity=None)` returns a
+  context manager. Within a scope, `save` joins one database transaction;
+  the transaction commits when the scope exits cleanly and rolls back on any
+  exception, so a crashed worker leaves zero partial evidence. The base-class
+  default is a no-op per-save autocommit, so every existing sink remains a
+  valid `OutcomeSink` (Liskov).
+* *Driver neutrality* (Dependency Inversion): `PostgresOutcomeSink` depends
+  only on the DB-API protocol — a `connect` callable is injected, and the
+  framework never imports a PostgreSQL driver. Deployments supply the
+  connection (typically `psycopg.connect(dsn)` with the DSN resolved from an
+  environment variable); tests supply fakes.
+* *Schema*: two tables under a validated namespace — `runs` (run key,
+  dataset, started millis, status, identity JSONB) and `artifacts` (run key,
+  artifact type, sequence, dataset, payload JSONB). Artifact payloads are the
+  validated bounded rows engines already produce. Reference DDL ships via
+  `ddl_statements()` for operators; migrations belong to deployment.
+* *Idempotency*: primary keys on `(run_key)` and
+  `(run_key, artifact_type, sequence)` with `ON CONFLICT DO NOTHING` — first
+  write wins, retries are safe, and evidence is immutable. Content divergence
+  under one key is a caller bug; the sink does not rewrite history.
+* *Configuration UX*: `repository { type = "postgres", schema = "dq" }` plus
+  the DSN read from an environment variable (`DQ_POSTGRES_DSN` by default).
+  Secrets never live in configuration files; a missing variable fails closed
+  before any connection attempt.
+* *Type dispatch*: `sink_from_config` returns the legacy `RepositorySink`
+  when no `type` is set (backwards compatible) and the PostgreSQL sink when
+  `type = "postgres"`; unknown types fail closed.
+
+== SOLID mapping
+
+* Single responsibility: engines validate, the facade orchestrates, the sink
+  persists; the statement builder persists and nothing else.
+* Open-closed: new storage backends subclass `OutcomeSink`; dialects change
+  quoting, not the port; the artifact payload accepts new engine fields
+  without schema churn (JSONB).
+* Liskov: every sink — including the run-scoped PostgreSQL sink — is
+  substitutable wherever an `OutcomeSink` is expected, with the same
+  duplicate and append semantics.
+* Interface segregation: `save` is the one method engines know; `run_scope`
+  is the separate optional protocol only the facade and durable sinks
+  implement.
+* Dependency inversion: engines and the facade depend on the abstract port;
+  the PostgreSQL sink depends on the DB-API protocol; psycopg is a
+  deployment dependency the framework never imports.
+
+== Co-design touchpoints
+
+* *Consumers (admission/promotion)*: the `runs`/`artifacts` tables are the
+  query surface. The identity column carries dataset digests, plan
+  fingerprints, and semantic versions as they become caller-certified; the
+  consumer's admission predicate is theirs to define on top — this ADR
+  provides the substrate and invites adjustment of columns and indexes
+  before rollout.
+* *Operators*: provision with `ddl_statements()`, set the environment
+  variable, and add `type = "postgres"`. Retention and partitioning are
+  deployment concerns.
+* *Engine authors*: nothing changes; artifacts keep their bounded row shapes.
+* Open questions for co-design review: retention policy, whether admission
+  needs denormalized check columns alongside JSONB, and whether run identity
+  should carry dataset digests at scope-open (they are caller-certified
+  per rule today).
+
+== Performance
+
+One transaction per run (not per artifact); parameterized inserts; bounded
+payloads (engine artifacts are per-column summaries, so the sink's
+`collect()` crosses the bounded summary boundary — never dataset rows);
+JSONB payloads indexed only where consumers need them. No Spark-side
+`coalesce`; no driver import at framework import time.
+
+== Rejected alternatives
+
+* Engine-owned JDBC writes (today's shape): fails atomicity and credential
+  hygiene, and couples engines to storage.
+* A Spark JDBC writer: needs driver jars and cluster configuration, and its
+  writes are per-DataFrame, so a run's artifacts land in separate
+  transactions — partial evidence becomes visible.
+* Files-only durable evidence: unqueryable by consumers without this
+  framework and no idempotency semantics.
+
+== Acceptance gates
+
+* Pure contracts with a fake DB-API connection: statement text and parameter
+  shapes, quoted identifiers, transaction lifecycle (commit on success,
+  rollback on exception, connection closed), and per-save autocommit outside
+  a scope.
+* Duplicate-key immutability is delegated to database constraints and
+  demonstrated by the in-memory sink's contract test.
+* The facade opens the run scope only when a sink is configured; engine
+  storage lanes (file) keep passing end to end.
+* A real-psycopg lane runs against a live database only in deployment
+  environments; the framework gains no driver dependency.

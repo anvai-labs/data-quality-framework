@@ -187,53 +187,59 @@ class DQFramework:
                 - ``ts``: Timestamp in milliseconds
                 - ``jobid``: Spark application ID
         """
+        from contextlib import nullcontext
+
         current_time_in_millis = time.time_ns() // 1_000_000
         cumulative_metrics = []
         cumulative_bytes = 0
+        sink = sink_from_config(self._config.get("dqframework.repository", {}))
 
         rule_configs = self._config.get("dqframework.dqrules", [])
         if not rule_configs:
             raise ConfigurationError("No dqrules defined in configuration")
 
-        for rule_index, rule_config in enumerate(rule_configs):
-            df_names = rule_config.get("dataframes", ["default"])
-            engine_name = rule_config.get(constants.DQ_ENGINE_NAME, None)
+        scope = (
+            sink.run_scope(current_time_in_millis)
+            if sink is not None
+            else nullcontext()
+        )
+        with scope:
+            for rule_index, rule_config in enumerate(rule_configs):
+                df_names = rule_config.get("dataframes", ["default"])
+                engine_name = rule_config.get(constants.DQ_ENGINE_NAME, None)
 
-            if engine_name is None:
-                raise ConfigurationError(
-                    f"Rule {rule_index} is missing required key 'engine'"
+                if engine_name is None:
+                    raise ConfigurationError(
+                        f"Rule {rule_index} is missing required key 'engine'"
+                    )
+
+                engine = EngineLoader().load_engine(
+                    engine_name, rule_config, current_time_in_millis
                 )
 
-            engine = EngineLoader().load_engine(
-                engine_name, rule_config, current_time_in_millis
-            )
+                for df_name in df_names:
+                    dataframe = self.get_dataframe(df_name)
+                    summary_metrics = engine.apply(dataframe, repository=sink)
+                    for outcome in normalize_outcomes(summary_metrics):
+                        metric = outcome.to_legacy()
+                        metric["ts"] = current_time_in_millis
+                        metric["jobid"] = self._spark.sparkContext.applicationId
+                        enriched = CheckOutcome.from_legacy(metric)
+                        cumulative_bytes += enriched.serialized_size
+                        if (
+                            len(cumulative_metrics) >= MAX_OUTCOMES
+                            or cumulative_bytes > MAX_BATCH_BYTES
+                        ):
+                            raise ValidationError(
+                                "Execution outcomes exceed summary limits"
+                            )
+                        if not outcome.success:
+                            logger.warning(
+                                "Check failed: %s", metric.get("check", "unnamed")
+                            )
+                        cumulative_metrics.append(metric)
 
-            for df_name in df_names:
-                dataframe = self.get_dataframe(df_name)
-                summary_metrics = engine.apply(
-                    dataframe,
-                    repository=sink_from_config(
-                        self._config.get("dqframework.repository", {})
-                    ),
-                )
-                for outcome in normalize_outcomes(summary_metrics):
-                    metric = outcome.to_legacy()
-                    metric["ts"] = current_time_in_millis
-                    metric["jobid"] = self._spark.sparkContext.applicationId
-                    enriched = CheckOutcome.from_legacy(metric)
-                    cumulative_bytes += enriched.serialized_size
-                    if (
-                        len(cumulative_metrics) >= MAX_OUTCOMES
-                        or cumulative_bytes > MAX_BATCH_BYTES
-                    ):
-                        raise ValidationError(
-                            "Execution outcomes exceed summary limits"
-                        )
-                    if not outcome.success:
-                        logger.warning(
-                            "Check failed: %s", metric.get("check", "unnamed")
-                        )
-                    cumulative_metrics.append(metric)
+            return cumulative_metrics
 
         return cumulative_metrics
 

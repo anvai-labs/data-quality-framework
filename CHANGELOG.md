@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the durable PostgreSQL outcome sink behind the port (ADR-006):
+  driver-neutral by dependency injection (the framework never imports a
+  driver or holds credentials — the DSN comes from the environment), one
+  transaction per run so partial evidence is never visible, and
+  idempotent `runs`/`artifacts` tables with reference DDL for operators;
+  `sink_from_config` now dispatches on `type` and the facade opens the run
+  scope around engine execution
+
 ## [2.3.0] - 2026-09-21
 
 ### Added
