@@ -11,7 +11,7 @@ from pydeequ.repository import FileSystemMetricsRepository, ResultKey
 
 from dq.engine.dq_engine import DQEngine
 from dq.engine.deequ.deequ_check import DeequCheck
-from dq.utils import repository_utils, constants
+from dq.utils import constants
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +75,12 @@ class DeequEngine(DQEngine):
 
         if repository:
             current_milli_time = ResultKey.current_milli_time()
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 successMetrics,
                 constants.DQ_REPOSITORY_METRICS,
                 current_milli_time,
             )
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 checkVerifications,
                 constants.DQ_REPOSITORY_VERIFICATIONS,
                 current_milli_time,

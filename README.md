@@ -133,9 +133,10 @@ assert outcome.success
 legacy = outcome.to_legacy()  # an independent mutable copy
 ```
 
-This is modernization unit U3a, not the portable rule/metric planner. Engine-owned
-repository writes still precede validation and are not admission evidence. The
-framework does not yet provide a transactional PostgreSQL admission sink.
+This is modernization unit U3a, not the portable rule/metric planner. Repository
+writes flow through the framework's outcome sink port after engine results pass
+the immutable outcome boundary; they remain run-local evidence, not admission
+decisions. The framework does not yet provide a transactional PostgreSQL admission sink.
 
 ## Portable count plans (opt-in core API)
 

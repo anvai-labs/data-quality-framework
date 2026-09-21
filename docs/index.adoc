@@ -155,8 +155,9 @@ boundary. Summaries require Boolean success and finite, strict JSON diagnostics;
 Spark summary Rows export named fields. Exports are independent copies. The
 boundary rejects more than 10,000 outcomes, 1 MiB per outcome, 16 MiB per batch/run,
 10,000 diagnostic nodes per outcome, or depth 16. It does not truncate evidence
-or bound upstream dataset collection. Portable rule planning and post-validation
-persistence remain separate units in the modernization plan.
+or bound upstream dataset collection. Portable rule planning has landed for
+counts/v1 and groups/v1; durable post-validation persistence remains proposed
+under ADR-002.
 
 === Portable count plans
 

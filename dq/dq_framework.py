@@ -16,6 +16,7 @@ from dq.catalog.catalog_factory import CatalogFactory
 from dq.exceptions import ConfigurationError, DataFrameNotFoundError, ValidationError
 from dq.identifiers import IdentifierError, TableName
 from dq.outcomes import MAX_BATCH_BYTES, MAX_OUTCOMES, CheckOutcome, normalize_outcomes
+from dq.sinks import sink_from_config
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,10 @@ class DQFramework:
             for df_name in df_names:
                 dataframe = self.get_dataframe(df_name)
                 summary_metrics = engine.apply(
-                    dataframe, repository=self._config.get("dqframework.repository", {})
+                    dataframe,
+                    repository=sink_from_config(
+                        self._config.get("dqframework.repository", {})
+                    ),
                 )
                 for outcome in normalize_outcomes(summary_metrics):
                     metric = outcome.to_legacy()

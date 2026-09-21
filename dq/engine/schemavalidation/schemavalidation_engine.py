@@ -10,7 +10,7 @@ from pyspark.sql import DataFrame
 from pydeequ.verification import VerificationSuite, VerificationResult
 from pydeequ.repository import ResultKey
 
-from dq.utils import repository_utils, constants
+from dq.utils import constants
 from dq.engine.schemavalidation.schemavalidation_check import SchemavalidationCheck
 
 logger = logging.getLogger(__name__)
@@ -46,14 +46,12 @@ class SchemavalidationEngine(DeequEngine):
 
         if repository:
             current_milli_time = ResultKey.current_milli_time()
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 successMetrics,
                 constants.DQ_REPOSITORY_METRICS,
                 current_milli_time,
             )
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 checkVerifications,
                 constants.DQ_REPOSITORY_VERIFICATIONS,
                 current_milli_time,

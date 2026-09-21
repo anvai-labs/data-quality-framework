@@ -14,7 +14,7 @@ from dq.engine.custom.strategies import (
     NoNegativeValuesStrategy,
 )
 
-from dq.utils import repository_utils, constants
+from dq.utils import constants
 
 logger = logging.getLogger(__name__)
 
@@ -143,14 +143,12 @@ class CustomEngine(DQEngine):
 
         if repository:
             current_milli_time = ResultKey.current_milli_time()
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 df_metrics_results,
                 constants.DQ_REPOSITORY_METRICS,
                 current_milli_time,
             )
-            repository_utils.save_to_repository(
-                repository,
+            repository.save(
                 df_check_verification_results,
                 constants.DQ_REPOSITORY_VERIFICATIONS,
                 current_milli_time,

@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`dq.identifiers`) used at every catalog and SQL boundary; malformed or injected
   identifiers fail closed before any Spark call, and Unity catalog SQL statements
   use quoted names (TD-ARCH-2)
+- Extracted persistence into an outcome sink port (`dq.sinks`): the framework
+  builds one validated `RepositorySink` and engines hand artifacts to the
+  injected port; writes are append-only and keyed, the idempotency contract is
+  enforced by an in-memory sink, the unconditional `coalesce(1)` was removed,
+  and malformed repository configuration fails eagerly (TD-ARCH-7)
 
 ## [2.2.0] - 2026-09-21
 
