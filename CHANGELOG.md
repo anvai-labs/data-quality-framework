@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-21
+
 ### Added
 
 - Added the ranges/v1 kernel contract (ADR-005): exact column count, minimum,
   and maximum metrics with value-range rules that compare one bound as an
   exact fraction, ignoring nulls and NaN and passing vacuously on empty
   columns
+- Extended the native Spark adapter to execute ranges/v1 plans through one
+  aggregate per dataset (nulls and NaN filtered explicitly), and the
+  translation subset to convert `isNonNegative` (one `.low` rule) and
+  `isInRange` (`.low`/`.high` rules) into value-range rules; a differential
+  suite proves the portable non-negative rule decides identically to the
+  legacy `NoNegativeValues` constraint across nulls, NaN, and empty input
 
 ### Changed
 

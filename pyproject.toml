@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "data-quality-framework"
-version = "2.2.0"
+version = "2.3.0"
 description = "A flexible data quality framework with engine extensibility using Python reflection"
 authors = ["Data Quality Framework Contributors"]
 license = "Apache-2.0"
