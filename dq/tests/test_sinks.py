@@ -5,6 +5,7 @@
 
 import pytest
 from pyhocon import ConfigFactory
+import uuid
 
 from pyspark.sql.types import StringType, StructField, StructType
 
@@ -228,6 +229,7 @@ def test_framework_persists_through_the_sink_to_files(spark, tmp_path):
       }} ]
       repository {{
         dataset = "bars"
+        namespace = "team_a"
         format = "parquet"
         file {{ paths = ["{tmp_path}"] }}
       }}
@@ -238,6 +240,28 @@ def test_framework_persists_through_the_sink_to_files(spark, tmp_path):
     assert results, "the run produces validated outcomes"
     written = spark.read.parquet(str(tmp_path / "metrics"))
     assert written.count() == 1, "one bounded summary per column"
-    assert {"dqts", "dataset", "year"} <= set(written.columns)
+    assert {"dqts", "dataset", "tenant_namespace", "year"} <= set(written.columns)
+    assert written.filter(written["dataset"] == "bars").count() == 1
     verifications = spark.read.parquet(str(tmp_path / "verifications"))
     assert verifications.count() >= 1
+
+
+def test_repository_sink_preflights_catalog_table_columns(spark, tmp_path):
+    suffix = uuid.uuid4().hex[:8]
+    legacy_table = f"legacy_evidence_{suffix}"
+    legacy_path = tmp_path / "legacy"
+    legacy_path = tmp_path / "legacy"
+    spark.sql(
+        f"CREATE TABLE {legacy_table} (dqts BIGINT, dataset STRING) "
+        f"USING parquet LOCATION '{legacy_path}'"
+    )
+    config = {
+        "dataset": "bars",
+        "namespace": "team_a",
+        "format": "parquet",
+        "catalog": {"tables": [f"default.{legacy_table}"]},
+    }
+    sink = RepositorySink(config)
+    frame = spark.createDataFrame([("east", "a")], ["region", "id"])
+    with pytest.raises(RepositoryError, match="migrate the table"):
+        sink.save(frame, "metrics", 42)

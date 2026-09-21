@@ -263,14 +263,11 @@ def test_prune_derives_cutoff_from_retention_days(factory):
 def test_prune_all_namespaces_drops_the_namespace_filter(factory):
     sink = PostgresOutcomeSink(factory, dataset="bars", retention_days=7)
     sink.prune(before_millis=1000, all_namespaces=True)
-    delete_statements = [
-        statement
-        for statement, params in factory.executed
-        if statement.startswith("DELETE")
-    ]
-    assert delete_statements and all(
-        "namespace" not in statement for statement in delete_statements
-    ), "cross-namespace pruning must not filter by namespace"
+    delete_calls_all = delete_calls(factory.executed)
+    assert len(delete_calls_all) == 2
+    # Correlation joins runs to their own artifacts; no namespace literal
+    # may appear as a filter parameter — the cutoff is the only bound.
+    assert all(params == (1000,) for _, params in delete_calls_all)
 
 
 def test_verify_schema_wraps_database_failures(factory):

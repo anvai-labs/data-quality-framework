@@ -364,6 +364,8 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:specs/SPEC-006-tenant-namespaces.adoc[SPEC-006: tenant namespaces]
 * link:specs/SPEC-007-sqlalchemy-arrow-sink.adoc[SPEC-007: SQLAlchemy sink and Arrow fast path]
 * link:review-handoff-codex.adoc[Adversarial review handoff for Codex]
+* link:reviews/2026-09-21-adversarial-review.md[Adversarial review findings (Codex, 2026-09-21)]
+* link:reviews/2026-09-21-review-triage.md[Triage and dispositions]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]

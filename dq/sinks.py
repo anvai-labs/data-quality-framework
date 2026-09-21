@@ -157,6 +157,25 @@ class RepositorySink(OutcomeSink):
             .withColumn("tenant_namespace", F.lit(namespace))
             .withColumn("year", F.lit(year))
         )
+        # Preflight every catalog target BEFORE any write so a schema
+        # mismatch fails closed instead of leaving partial evidence
+        # (review finding F06).
+        for table in self._tables:
+            table_with_suffix = f"{table}_{metric_type}"
+            if df.sparkSession.catalog.tableExists(table_with_suffix):
+                table_columns = {
+                    column.name
+                    for column in df.sparkSession.catalog.listColumns(table_with_suffix)
+                }
+                missing = [
+                    column for column in enriched.columns if column not in table_columns
+                ]
+                if missing:
+                    raise RepositoryError(
+                        f"evidence table {table_with_suffix!r} is missing "
+                        f"columns {sorted(missing)}; migrate the table "
+                        "before writing"
+                    )
         targets = []
         for path in self._paths:
             target = f"{path}/{metric_type}"

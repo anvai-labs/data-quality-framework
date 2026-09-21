@@ -27,10 +27,11 @@ DataFusion, Polars, or LanceDB: Deequ is structurally Spark-bound.
 
 * *SQLAlchemy sink generalization (SPEC-007, build now)*: the durable
   sink's SQL layer moves to SQLAlchemy Core with an injected `Engine` or
-  `Connection`. Dialect quoting, batching, and driver handling pass to
-  SQLAlchemy — one implementation on PostgreSQL today, other RDBMSs
-  inherited without new code. Optional pyarrow is the batch-insert fast
-  path where the driver supports it.
+  `Connection`. SQLAlchemy supplies bind normalization and connection
+  management — it does NOT rewrite dialect-specific SQL, so the certified
+  lane stays PostgreSQL; additional RDBMSs require explicit per-dialect
+  implementations and certification (review finding F12). Optional pyarrow
+  is the batch-insert fast path where the driver supports it.
 * *Arrow-native evaluation engine (gated follow-up)*: an analogous engine to
   Deequ built on Arrow compute (pyarrow; DataFusion optional), living behind
   this framework's semantic versions. It evaluates counts/v1, groups/v1, and

@@ -29,8 +29,15 @@ threshold-independent metric set, mirroring the groups/v1 pattern.
   computable in one distributed aggregate.
 * Bounds are supplied as exact ``Fraction`` values, never binary floats:
   adapters convert Spark decimals exactly and render doubles through their
-  shortest exact decimal representation. The kernel compares bounds as exact
-  rationals, matching counts/v1's no-approximation doctrine.
+  shortest round-trip decimal representation. The kernel compares bounds as
+  exact rationals, matching counts/v1's no-approximation doctrine.
+  *Adversarial-review amendment (2026-09-21):* shortest-decimal rendering
+  is a *decimalized-float* contract, not the exact stored binary value — a
+  stored double of 0.1 compares as exactly 1/10 under this contract although
+  its binary value differs. Certification is therefore threshold-sensitive
+  for double columns; decimal columns carry truly exact bounds. If exact-
+  binary semantics are ever required, that is a new semantic version
+  requiring recertification (review finding F09).
 * New rule kind ``VALUE_RANGE``: one predicate bound to one target metric
   (``COLUMN_MIN`` for lower bounds, ``COLUMN_MAX`` for upper bounds).
   "Every value is at least ``l``" is ``min >= l``; ``isInRange(l, u)`` is

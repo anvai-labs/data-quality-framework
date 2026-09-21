@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Landed the independent adversarial review triage (Codex): run-scoped
+  authoritative artifact keys, namespace-correlated retention pruning,
+  admission-view deduplication, catalog preflight before writes, and
+  documented threading/float-contract limits; open findings are tracked
+  with dispositions (docs/reviews/)
+
 - Adopted the open-core split (ADR-009): the engine, evidence format, and
   sinks stay open and must run control-plane-free; the multi-tenant control
   plane moves to a closed repository consuming published OSS artifacts.

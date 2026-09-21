@@ -64,7 +64,7 @@ class PostgresOutcomeSink(OutcomeSink):
                 "retention_days must be a positive integer when provided"
             )
         self._retention_days = retention_days
-        self._active = None  # (connection, cursor) while a run scope is open
+        self._active = None  # (connection, cursor, run_key) while a scope is open
 
     @classmethod
     def from_config(cls, repoconfig, env=None) -> PostgresOutcomeSink:
@@ -128,14 +128,11 @@ class PostgresOutcomeSink(OutcomeSink):
             f"CREATE OR REPLACE VIEW {schema}.runs_completed AS "
             f"SELECT * FROM {runs} WHERE status = 'completed'",
             f"CREATE OR REPLACE VIEW {schema}.latest_per_dataset AS "
-            "SELECT r.* FROM (SELECT namespace, dataset, "
-            "MAX(started_millis) AS latest FROM "
-            f"{runs} WHERE status = 'completed' GROUP BY namespace, dataset) "
-            "latest JOIN "
-            f"{runs} r ON r.namespace = latest.namespace "
-            "AND r.dataset = latest.dataset "
-            "AND r.started_millis = latest.latest "
-            "WHERE r.status = 'completed'",
+            "SELECT * FROM (SELECT r.*, ROW_NUMBER() OVER ("
+            "PARTITION BY r.namespace, r.dataset "
+            "ORDER BY r.started_millis DESC, r.run_key DESC) AS rn "
+            f"FROM {runs} r WHERE r.status = 'completed') ranked "
+            "WHERE ranked.rn = 1",
         ]
 
     def verify_schema(self) -> dict:
@@ -206,11 +203,12 @@ class PostgresOutcomeSink(OutcomeSink):
             cursor = connection.cursor()
             if scoped:
                 cursor.execute(
-                    f"DELETE FROM {self._qualified_artifacts()} "
-                    "WHERE namespace = %s AND run_key IN ("
-                    f"SELECT run_key FROM {self._qualified_runs()} "
-                    "WHERE namespace = %s AND started_millis < %s)",
-                    (target, target, before_millis),
+                    f"DELETE FROM {self._qualified_artifacts()} AS a "
+                    "USING " + self._qualified_runs() + " AS r "
+                    "WHERE a.namespace = r.namespace "
+                    "AND a.run_key = r.run_key "
+                    "AND r.namespace = %s AND r.started_millis < %s",
+                    (target, before_millis),
                 )
                 artifacts_deleted = cursor.rowcount
                 cursor.execute(
@@ -220,10 +218,11 @@ class PostgresOutcomeSink(OutcomeSink):
                 )
             else:
                 cursor.execute(
-                    f"DELETE FROM {self._qualified_artifacts()} "
-                    "WHERE run_key IN ("
-                    f"SELECT run_key FROM {self._qualified_runs()} "
-                    "WHERE started_millis < %s)",
+                    f"DELETE FROM {self._qualified_artifacts()} AS a "
+                    "USING " + self._qualified_runs() + " AS r "
+                    "WHERE a.namespace = r.namespace "
+                    "AND a.run_key = r.run_key "
+                    "AND r.started_millis < %s",
                     (before_millis,),
                 )
                 artifacts_deleted = cursor.rowcount
@@ -269,7 +268,7 @@ class PostgresOutcomeSink(OutcomeSink):
         @contextmanager
         def session():
             previous = self._active
-            self._active = (connection, cursor)
+            self._active = (connection, cursor, run_key)
             try:
                 yield self
             except Exception:
@@ -283,18 +282,29 @@ class PostgresOutcomeSink(OutcomeSink):
 
         return session()
 
-    def save(self, df, metric_type: str, key: int) -> WriteResult:
+    def save(self, df, metric_type: str, key: int | None = None) -> WriteResult:
+        """Persist one artifact under the authoritative run key.
+
+        Inside a run scope the scope's run key is authoritative and the
+        caller's key is advisory: all artifacts of one run join that run
+        regardless of engine-side timestamps (review finding F01). Outside
+        a scope an explicit key is required.
+        """
         rows = [row.asDict(recursive=True) for row in df.collect()]
         if self._active is not None:
-            connection, cursor = self._active
-            self._insert_artifacts(cursor, metric_type, key, rows)
+            connection, cursor, run_key = self._active
+            self._insert_artifacts(cursor, metric_type, run_key, rows)
             return WriteResult(
-                metric_type, int(key), (f"postgres:{self._qualified_artifacts()}",)
+                metric_type, run_key, (f"postgres:{self._qualified_artifacts()}",)
+            )
+        if key is None:
+            raise RepositoryError(
+                "sinks outside a run scope require an explicit run key"
             )
         connection = self._connect()
         try:
             cursor = connection.cursor()
-            self._insert_artifacts(cursor, metric_type, key, rows)
+            self._insert_artifacts(cursor, metric_type, int(key), rows)
             connection.commit()
         except Exception:
             connection.rollback()
