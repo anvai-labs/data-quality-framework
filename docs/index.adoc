@@ -350,6 +350,7 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:decisions/adr/ADR-005-value-range-metrics.adoc[ADR-005: value-range metrics]
 * link:decisions/adr/ADR-006-durable-postgres-sink.adoc[ADR-006: durable PostgreSQL sink]
 * link:decisions/adr/ADR-007-productization-mvp.adoc[ADR-007: productization MVP]
+* link:decisions/adr/ADR-008-gate-event-notifier-port.adoc[ADR-008: gate-event notifier port]
 * link:decisions/adr/ADR-009-open-core-boundary.adoc[ADR-009: open-core boundary]
 * link:decisions/adr/ADR-010-compute-agnostic-dataplane.adoc[ADR-010: compute-agnostic data plane]
 * link:decisions/adr/ADR-010-compute-agnostic-dataplane.adoc[ADR-010: compute-agnostic data plane]
