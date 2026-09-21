@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-21
+
 ### Added
 
 - Added a native Spark adapter (`dq.spark_adapter`) that executes portable size and
