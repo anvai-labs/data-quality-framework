@@ -1,0 +1,53 @@
+= SPEC-006: Tenant namespaces in the evidence schema
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: TD-PROD-4a, ADR-009 (interface consumed by the closed control
+plane)
+
+== Purpose
+
+Pin the OSS-side tenancy contract: a validated `namespace` dimension in the
+evidence schema that the control plane (closed repo) uses for isolation,
+retention, and metering. The engine stays tenant-blind — namespaces are
+stamped by the sink at write time from the repository configuration, exactly
+like `dataset` today.
+
+== In scope
+
+* `namespace` on `RepositorySink` (configuration key `namespace`, default
+  `"default"`, validated as one bounded identifier part) — stamped alongside
+  `dataset`/`year` on file writes and as a column on catalog/PG writes.
+* ADR-006 schema: `runs` and `artifacts` gain a `namespace TEXT NOT NULL
+  DEFAULT 'default'` column; admission views (`runs_completed`,
+  `latest_per_dataset`) filter by namespace.
+* Per-namespace retention: `prune(before_millis, namespace=None)` — `None`
+  prunes across namespaces only when the caller passes
+  `all_namespaces=True`.
+* Negative isolation gates: a prune or query scoped to namespace `A` must
+  never touch namespace `B`'s rows (contract tests with fake DB-API).
+
+== Out of scope
+
+* API keys, RBAC, tenant CRUD (control plane, closed repo, ADR-009).
+* Changing the engine or kernel — engines remain tenant-blind.
+
+== Contracts
+
+* `RepositorySink(..., namespace="default")`; `save` stamps the namespace
+  column identically to `dataset`.
+* `PostgresOutcomeSink.run_scope(run_key, identity)` stores the namespace in
+  the runs row and in the identity JSONB.
+* Isolation is enforced by SQL scoping only — no cross-namespace statement
+  is ever constructed.
+
+== Acceptance gates
+
+* Two namespaces writing the same run key do not collide (namespace is part
+  of the uniqueness surface).
+* Prune scoped to namespace A leaves namespace B's rows untouched.
+* Admission views return only the requested namespace's rows.
+
+Links: TD-PROD-4a; ADR-009; ADR-006.

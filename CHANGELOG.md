@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Adopted the open-core split (ADR-009): the engine, evidence format, and
+  sinks stay open and must run control-plane-free; the multi-tenant control
+  plane moves to a closed repository consuming published OSS artifacts.
+  SPEC-006 pins the OSS-side tenant namespace primitives the control plane
+  builds on; TD-PROD-4 is split across the boundary and TD-PROD-6 adds
+  boundary contract tests
+
 - Added the productization strategy and market landscape document with
   ADR-007 (certifiable evidence plane positioning, MVP slices) and the
   TD-PROD-1..5 debt-ledger entries driving packaging, alerting, anomaly

@@ -177,9 +177,11 @@ metrics inside the kernel (ADR-007, MVP-2; co-design before build).
 |P1
 |The evidence plane is single-tenant: one namespace, no API keys, no RBAC,
 no retention configuration.
-|A multi-tenant control plane over the evidence store - namespaces, keys,
-RBAC, retention - with negative isolation tests (ADR-007, MVP-2). Outline:
-SPEC-005.
+|Split by the open-core boundary (ADR-009): 4a (open) tenant namespace
+primitives in the evidence schema - namespace column, scoped retention,
+negative isolation tests (SPEC-006); 4b (closed repo `dq-control-plane`)
+tenants, API keys, RBAC, and the control plane API - tracked in the closed
+repo's own ledger (ADR-009).
 
 |TD-PROD-5
 |P2
@@ -187,6 +189,20 @@ SPEC-005.
 compatibility matrix for downstream consumers.
 |Quickstart, error catalog, and a published compatibility matrix
 (ADR-007, MVP-1). Spec: SPEC-004 with the enforcing contract test.
+
+|TD-PROD-6
+|P1
+|The open-core boundary (ADR-009) is currently enforced only by convention.
+|Boundary contract tests: the OSS suite proves the framework runs
+control-plane-free with zero closed-repo references, and a schema-stability
+contract pins the evidence surface the closed repo consumes.
+
+|TD-PROD-7
+|P2
+|Marketplace metering, tenant UX, and dashboard API belong to the closed
+control plane and have no OSS-side spec.
+|Owned by the closed repo (`dq-control-plane`), which mirrors this repo's
+ADR/spec/TD discipline; OSS tracks only the boundary. See ADR-009.
 |===
 
 == Target architecture
@@ -363,7 +379,11 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   link:product-strategy.adoc[the product strategy]): MVP-1 lands the durable
   PostgreSQL evidence plane rollout (ADR-006), a gate-event notifier port,
   and signed/SBOM releases (TD-PROD-1, TD-PROD-2); MVP-2 adds the
-  multi-tenant control plane and marketplace offers (TD-PROD-4). The
+  multi-tenant control plane and marketplace offers. ADR-009 splits that
+  control plane into a closed repository (`dq-control-plane`) that consumes
+  this framework through its published artifacts — the open repo keeps the
+  engine, the evidence format, and the tenant-namespace primitives
+  (SPEC-006); the boundary is enforced by TD-PROD-6. The
   PostgreSQL durable sink remains the co-design substrate with the consumer;
   groups/v2 may make the empty-input vacuous pass configurable. No backend
   migration is enabled by this dependency upgrade.

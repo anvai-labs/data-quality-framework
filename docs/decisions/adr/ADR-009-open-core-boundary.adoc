@@ -1,0 +1,110 @@
+= ADR-009: Open-core split — engine and evidence format open, control plane closed
+:toc:
+:sectlinks.
+
+Status: Accepted +
+Date: 2026-09-21 +
+Refines: ADR-007 (MVP-2 control plane and marketplace offers)
+
+== Context
+
+U1–U7 and the parity extensions are shipped and certified. The product
+strategy (link:../../product-strategy.adoc[product strategy]) positions the
+framework as the certifiable evidence plane for lakehouse quality, and the
+marketplace route (AWS Marketplace SaaS with metering, Azure Partner Center
+SaaS with Entra ID, Databricks partner listing) requires a multi-tenant
+control plane: tenants, API keys, RBAC, retention, metering, and a query
+API over the evidence store.
+
+Designed from first principles, the question is not "which code is better"
+but **what a customer pays for**. The rules engine and the evidence *format*
+must remain open — openness is what makes evidence trustworthy and what
+drives adoption; nobody audits a proprietary verifier, and a closed evidence
+format cannot serve as neutral proof. What customers pay for is
+*operational accountability*: managed multi-tenant durability, isolation
+guarantees, metered usage, alerting delivery, compliance artifacts, and
+someone answerable when things break. Anything that requires operational
+accountability belongs in a product with a vendor behind it; everything else
+stays in the open library.
+
+== Decision
+
+Split across two repositories, with a one-directional dependency:
+
+* *Open (this framework, Apache-2.0)*: the semantic kernel (counts/v1,
+  groups/v1, ranges/v1), the native Spark adapter, the translation subset,
+  the sink port with file/catalog/PostgreSQL implementations, the evidence
+  schema DDL (ADR-006), `dq-report/v1`, and all ADRs/specs/TD records. It
+  must run fully with **zero control plane, zero telemetry, and zero
+  license checks** — that property is itself a trust feature.
+* *Closed (`anvai-labs/dq-control-plane`, proprietary)*: the multi-tenant
+  control plane — tenants, API keys, RBAC, retention service, metering
+  adapters (AWS Marketplace metering, Azure SaaS Fulfillment), and the
+  evidence query/dashboard API. It imports the open framework only through
+  the published PyPI package and consumes evidence only through the
+  documented ADR-006 schema and `dq-report/v1`.
+* *Dependency rule (Dependency Inversion at repository scale)*: the closed
+  repo depends on open artifacts; the open repo must never depend on, refer
+  to, or require the closed repo. OSS CI proving the framework runs
+  control-plane-free is the enforcement (TD-PROD-6).
+* *Interface the closed side builds on*: the OSS-side tenant namespace
+  primitives specified in SPEC-006 (namespace column and isolation tests in
+  the evidence schema), so multi-tenancy is a schema-and-control-plane
+  concern rather than an engine concern.
+* *Licensing*: the open repo stays Apache-2.0. The closed repo's final
+  license wording is an owner decision; until then it ships proprietary
+  with all-rights-reserved placeholders.
+
+== SOLID at repository scale
+
+* Single responsibility: the open repo answers "is this evidence correct
+  and complete?"; the closed repo answers "who may see and use it, and what
+  did they consume?".
+* Open-closed: new marketplace integrations are adapters inside the closed
+  repo; the open repo changes only when semantics change.
+* Liskov: any closed-repo sink or notifier remains substitutable for the
+  open ports — the control plane can be removed entirely and the library
+  still runs, unchanged.
+* Interface segregation: engines know `OutcomeSink`; the control plane knows
+  `run_scope`, identity, and metering; consumers know SQL and
+  `dq-report/v1`.
+* Dependency inversion: both sides depend on abstractions (ports, evidence
+  schema, report format), never on each other's internals.
+
+== UX commitments
+
+* The open library gains **no telemetry, no phone-home, no license
+  enforcement** — trust in the evidence requires trust in the tool.
+* Operators provision once (`ddl_statements()` + DSN) and opt into the
+  control plane only when they want managed multi-tenancy.
+* Consumers query evidence with plain SQL against a documented, stable
+  schema.
+
+== Co-design touchpoints
+
+* The consumer's admission and promotion predicates ride the same
+  `runs`/`artifacts` schema; the consumer owns the predicate, the framework
+  owns immutability and identity.
+* Marketplace metering adapters belong to the closed repo and are
+  co-designed with each marketplace's requirements (AWS Marketplace
+  metering service; Azure SaaS Fulfillment API).
+
+== Rejected alternatives
+
+* A single closed fork of the framework: abandons the trust and adoption
+  that open evidence requires, and splits the community from the product.
+* An open control plane: gives away precisely the operational
+  accountability customers pay for, and funds nothing.
+* License-key checks inside the open library: poisons the trust property
+  the open side exists to create; monetization must live behind the
+  boundary, not inside the library.
+
+== Acceptance gates
+
+* The open repo's CI proves the framework runs control-plane-free
+  (TD-PROD-6), and a repository grep shows zero references to the closed
+  repo.
+* The closed repo consumes only PyPI-published OSS artifacts and the
+  documented schema; its ledger tracks its own debt.
+* SPEC-006 pins the namespace contract before any control-plane code is
+  written against it.
