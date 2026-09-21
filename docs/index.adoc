@@ -158,6 +158,61 @@ boundary rejects more than 10,000 outcomes, 1 MiB per outcome, 16 MiB per batch/
 or bound upstream dataset collection. Portable rule planning and post-validation
 persistence remain separate units in the modernization plan.
 
+=== Portable count plans
+
+The opt-in `dq.plan` API owns immutable `DatasetRef`, `ColumnRef`, `Predicate`,
+`RuleSpec`, `MetricKey`, `CapabilitySet`, and `ExecutionPlan` values. It uses only
+the standard library and framework exceptions/outcomes. No engine is imported.
+Run `python -m examples.portable_counts` from a source checkout for an executable
+fixture demonstration, not a real admission report.
+
+[cols="1,3",options="header"]
+|===
+|Contract |`counts/v1` meaning
+|Input identity |Case-sensitive logical dataset alias plus SHA-256 of a snapshot
+whose identity covers both data and schema. The caller/adapter verifies the bytes;
+the kernel only validates the supplied identity's shape.
+|Columns |One case-sensitive portable identifier, up to 128 ASCII characters.
+Nested paths, quoting, expressions and SQL filters are not accepted.
+|Row count |Exact global count including rows containing null/NaN; unsigned 64-bit.
+|Present count |Exact global count excluding null and floating-point NaN in the
+selected column. Empty strings and infinities are present: completeness is not
+a finite-value or nonblank check.
+|Size |Integer count compared with an integral threshold.
+|Completeness |Present/rows, compared as an exact fraction against a finite
+Decimal threshold in [0,1]. Empty input fails, even when the threshold is zero.
+|Predicates |GE, GT, LE, LT, EQ only; no executable expressions, binary-float
+thresholds, approximations, or implicit rounding. Decimal precision and exponent
+are bounded to 38 digits and [-38,38].
+|Failure |Missing, extra, malformed, snapshot-mismatched or inconsistent metrics
+are execution errors, not failed quality measurements. Warning severity never
+turns a failed check into passing `dq-report/v1` evidence.
+|===
+
+Rules are sorted by unique stable ID. Plans reject empty/mutable rule collections,
+more than 10,000 rules, and conflicting snapshot bindings for one alias. A tuple
+of deduplicated metric keys includes snapshot, column, kind and semantic version.
+The canonical JSON SHA-256 is cached; it is independent of rule input order,
+Decimal trailing zeros, and adapter identity. Adapter name/version is recorded
+separately in outcomes. Duplicate metrics do not yet imply a single physical scan.
+
+`validate_for(capabilities)` rejects unsupported metrics or semantic versions.
+`evaluate(counts, capabilities)` repeats that check, validates the complete metric
+set, and returns immutable outcomes. Counts must describe the complete snapshot:
+partition counts may be summed, but partition completeness ratios must not be
+averaged without weighting by row count. Only summaries cross this boundary.
+
+Capability declarations are promises, not proof. No built-in Spark/PyDeequ/GE
+adapter advertises `counts/v1` yet. The next unit must prove null/NaN, empty-input,
+case-sensitive columns and partition-invariant execution before connecting this
+API to real frames. Numeric ranges, uniqueness, schema, regex, clocks/timezones,
+HOCON translation, durable admission and DataFusion remain outside this slice.
+
+Outcomes carry the rule ID, exact numerator/denominator, semantic version, logical
+plan digest and adapter declaration. `build_report` accepts these outcomes, but
+the plan digest does not replace approved rule-set/dataset digests or establish
+durable promotion authority. Existing engine entry points are unchanged.
+
 === DQDL compatibility
 
 PyDeequ 1.7 adds Deequ Data Quality Definition Language support. The `dqdl` engine accepts a

@@ -23,7 +23,9 @@ semantic layer between rules and execution engines.
 
 Build an immutable, engine-neutral rule kernel and retain external systems as physical
 execution adapters. The accompanying dependency change targets PyDeequ 1.7 as the Spark 3.5
-adapter. Kernel implementation and native Spark/DataFusion compilers remain planned.
+adapter. The initial opt-in count-plan kernel is implemented in `dq.plan`; native
+Spark/DataFusion compilers and legacy configuration translation remain planned.
+Adoption of the broader architecture remains proposed until adapter parity is demonstrated.
 
 image::../../png/engine-neutral-kernel.png[Engine-neutral rule kernel and execution adapters]
 
