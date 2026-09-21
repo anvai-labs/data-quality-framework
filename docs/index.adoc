@@ -349,6 +349,8 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:decisions/adr/ADR-004-grouped-metric-requests.adoc[ADR-004: grouped metric requests]
 * link:decisions/adr/ADR-005-value-range-metrics.adoc[ADR-005: value-range metrics]
 * link:decisions/adr/ADR-006-durable-postgres-sink.adoc[ADR-006: durable PostgreSQL sink]
+* link:decisions/adr/ADR-007-productization-mvp.adoc[ADR-007: productization MVP]
+* link:product-strategy.adoc[Product strategy and market landscape]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the productization strategy and market landscape document with
+  ADR-007 (certifiable evidence plane positioning, MVP slices) and the
+  TD-PROD-1..5 debt-ledger entries driving packaging, alerting, anomaly
+  policy, multi-tenancy, and documentation work
+
 - Added the durable PostgreSQL outcome sink behind the port (ADR-006):
   driver-neutral by dependency injection (the framework never imports a
   driver or holds credentials — the DSN comes from the environment), one

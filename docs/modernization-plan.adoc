@@ -149,6 +149,42 @@ session implemented 2026-09-21 (U7).*
 |PyDeequ types leak into shared constants, assertions, schema checks, and repository helpers.
 |ADR-002: own typed rule/metric semantics, introduce a native Spark parity subset, then an
 Arrow/DataFusion adapter. Retain vendor adapters for rules that cannot be translated faithfully.
+
+|TD-PROD-1
+|P1
+|Releases ship from source without signatures, SBOMs, or marketplace-grade
+packaging; no container image or listing assets exist.
+|Signed wheels, SBOM, provenance attestation, container image, and listing
+assets per marketplace security review (ADR-007, MVP-1).
+
+|TD-PROD-2
+|P1
+|Gate events produce no notifications and no incident records; consumers poll
+reports.
+|A notifier port beside the sink (webhook/e-mail adapters, fake first) that
+emits gate events from run scope commits, with incident records in the
+evidence store (ADR-007, MVP-1).
+
+|TD-PROD-3
+|P2
+|No statistical or ML anomaly policies exist; the kernel is exact-only by
+doctrine.
+|An optional policy pack consuming kernel evidence - never approximate
+metrics inside the kernel (ADR-007, MVP-2; co-design before build).
+
+|TD-PROD-4
+|P1
+|The evidence plane is single-tenant: one namespace, no API keys, no RBAC,
+no retention configuration.
+|A multi-tenant control plane over the evidence store - namespaces, keys,
+RBAC, retention - with negative isolation tests (ADR-007, MVP-2).
+
+|TD-PROD-5
+|P2
+|Onboarding requires reading ADRs; no quickstart, error-message catalog, or
+compatibility matrix for downstream consumers.
+|Quickstart, error catalog, and a published compatibility matrix
+(ADR-007, MVP-1).
 |===
 
 == Target architecture
@@ -320,7 +356,13 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   runs the portable and pure suites without a JVM); and example scripts carry
   compile-plus-execution contracts. Extension compatibility is explicit in
   ADR-003 and the operator reference.
-* Beyond U7: the PostgreSQL durable sink remains proposed under ADR-002, and
+* Beyond U7 — productization track: with U1-U7 complete, the modernization
+  sequence is finished and a productization track opens under ADR-007 (see
+  link:product-strategy.adoc[the product strategy]): MVP-1 lands the durable
+  PostgreSQL evidence plane rollout (ADR-006), a gate-event notifier port,
+  and signed/SBOM releases (TD-PROD-1, TD-PROD-2); MVP-2 adds the
+  multi-tenant control plane and marketplace offers (TD-PROD-4). The
+  PostgreSQL durable sink remains the co-design substrate with the consumer;
   groups/v2 may make the empty-input vacuous pass configurable. No backend
   migration is enabled by this dependency upgrade.
 

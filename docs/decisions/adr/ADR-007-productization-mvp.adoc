@@ -1,0 +1,87 @@
+= ADR-007: Productize as the certifiable evidence plane for lakehouse quality
+:toc:
+:sectlinks.
+
+Status: Proposed (co-design review requested; MVP-1 scope may proceed) +
+Date: 2026-09-21
+
+== Context
+
+The modernization sequence U1-U7 is complete: a semantically versioned rule
+kernel (counts/v1, groups/v1, ranges/v1) with a differentially certified
+native Spark adapter, a translated subset of six legacy constraints, a
+fail-closed evidence boundary, validated identifiers, and an outcome sink
+port with durable PostgreSQL storage behind it (ADR-006). The commercial
+landscape (see link:../product-strategy.adoc[the product strategy]) is crowded
+at the dashboard/observability platform layer — Monte Carlo, Anomalo, Bigeye,
+Soda, plus native Lakehouse Monitoring, Glue Data Quality, and Purview — but
+empty at the layer this framework already occupies: an **embeddable,
+certifiable quality-evidence engine** whose rules are semantically versioned,
+whose arithmetic is exact, and whose evidence is machine-checkable.
+
+== Decision
+
+Position the framework as *the certifiable evidence plane for lakehouse
+quality* and drive productization through three bounded MVP slices, each
+landing as library capability first and marketplace packaging second.
+
+* *MVP-0 (shipped): open-source library.* The kernel, Spark adapter,
+  translation subset, and sinks are the credibility asset. Distribution
+  tightens around signed releases and a documented PyPI install path.
+* *MVP-1 (evidence plane):* the PostgreSQL sink rolls out with the
+  `runs`/`artifacts` evidence schema (ADR-006), `dq-report/v1` documents bind
+  to run keys, an alerting notifier port emits gate events, retention becomes
+  a deployment configuration, and releases ship SBOMs and signatures. The
+  consumer's admission and promotion gates are co-designed on this query
+  surface — the framework provides evidence and immutability; the consumer
+  owns the admission predicate.
+* *MVP-2 (marketplace offers):* a multi-tenant control plane (namespaces,
+  API keys, retention, RBAC over the evidence plane), transactable listings
+  (AWS Marketplace SaaS with marketplace metering; Azure Partner Center SaaS
+  with Entra ID; Databricks partner listing for in-lakehouse trials), and
+  packaged coexistence guides for Lakehouse Monitoring and Glue Data Quality.
+
+Constraint carried from ADR-003: the custom constraint surface remains
+frozen; productization adds *ports and packaging*, never new engine
+vocabulary without kernel-backed semantics.
+
+== SOLID and UX commitments
+
+* Single responsibility: productization adds packages, not engine features;
+  the kernel keeps one reason to change.
+* Open-closed: marketplaces integrate through new sink/notifier
+  implementations; billing and metering attach to the control plane, not the
+  library.
+* Liskov: any MVP-2 multi-tenant sink remains substitutable for the plain
+  port, honoring run scopes and idempotency.
+* Interface segregation: engines know `OutcomeSink`; the control plane knows
+  `run_scope`, identity, and retention; consumers know SQL.
+* Dependency inversion: marketplace metering, identity providers, and
+  notification channels are injected adapters — the framework imports none of
+  them.
+* UX: one config surface (`dqframework.repository` with typed sinks), DSNs
+  from the environment, error messages that name the failing boundary, and
+  evidence a consumer can query with plain SQL.
+
+== Rejected alternatives
+
+* Building a dashboard/observability platform to compete with Monte Carlo and
+  Anomalo: a UI company is a different company; the defensible layer is the
+  certifiable engine and evidence plane.
+* ML anomaly detection inside the kernel: violates the exactness doctrine and
+  ADR-002's rejection of approximations; a future policy pack may consume
+  kernel evidence instead.
+* Proprietary forks of Deequ: abandons the semantic-versioning and
+  certification assets that differentiate the framework.
+
+== Acceptance gates
+
+* MVP-1: evidence plane deploys from `ddl_statements()` with retention
+  configured; notifier port lands with a fake and one real channel;
+  `dq-report/v1` binds to run keys; SBOM and signatures on releases.
+* MVP-2: a transactable listing exists on at least one marketplace with
+  metered billing; multi-tenant isolation has negative tests; support and
+  compatibility docs are published.
+* Every slice keeps the library open-source and the evidence format open —
+  monetization attaches to the service, control plane, and support, never to
+  closed evidence formats.

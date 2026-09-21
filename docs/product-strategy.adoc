@@ -1,0 +1,116 @@
+= Product strategy: from framework to marketplace solution
+:toc:
+:sectlinks.
+
+Status: Proposal for co-design +
+Date: 2026-09-21 +
+Companion decision: link:decisions/adr/ADR-007-productization-mvp.adoc[ADR-007]
+
+== Market landscape (research summary, 2026-09)
+
+The commercial data-quality and data-observability market is real, growing,
+and crowded at the platform layer:
+
+* Data-quality tools: roughly **USD 2.6-3.9 billion in 2025-2026**, forecast
+  to grow at ~13-18% CAGR (estimates range up to USD 7-16 billion by
+  2031-2034 depending on scope).
+* Data observability: roughly **USD 2-3 billion in 2025-2026**, forecast
+  toward USD 4.7-8.8 billion by 2030-2035.
+
+Platform vendors:
+
+* *Monte Carlo* — the funded incumbent, positioned as a full data-reliability
+  platform (freshness, volume, schema, distribution, lineage, incidents).
+* *Anomalo* — ML-native anomaly detection specialist.
+* *Bigeye* — testing depth plus lineage, hybrid-infrastructure messaging.
+* *Soda* — lightweight, DSL/testing-focused; enterprise observability is the
+  upsell path.
+* *Lightup, Acceldata* — adjacent observability platforms.
+
+Cloud-native competition:
+
+* *Databricks*: Lakehouse Monitoring is the native quality/monitoring feature;
+  the Databricks Marketplace distributes partner solutions that trial inside
+  the customer's lakehouse.
+* *AWS*: Glue Data Quality is built on **Deequ** — the very library this
+  framework's legacy path wraps; AWS Marketplace SaaS listings require
+  vulnerability scans, pen-test reports, least-privilege IAM, and encryption
+  documentation; AWS Data Exchange governs data products.
+* *Azure*: Purview Unified Catalog owns data-product governance and quality
+  scoring; Marketplace SaaS offers require Partner Center certification,
+  Entra ID integration, and the SaaS Fulfillment API.
+
+== Strategic read (first principles)
+
+Platform vendors compete on dashboards, ML anomaly detection, and incident
+workflow. Competing there means building a UI company. This framework's
+durable advantages are orthogonal and rare:
+
+. *A verifiable semantic kernel* — exact-arithmetic rules, semantic versions,
+   canonical fingerprints, capability negotiation, and differential
+   certification against PyDeequ. Evidence produced by this kernel is
+   *checkable*, which no dashboard vendor offers.
+. *Fail-closed boundaries* — strict JSON outcomes, validated identifiers, a
+   sink port with run-scoped transactions. Financial and regulated data
+   (the IBKR track) values this over dashboards.
+. *Engine neutrality with a certified native path* — Spark adapter proven
+   equivalent to PyDeequ; portable translation for six legacy constraints;
+   drivers and storage injected, never owned.
+
+The monetizable position is therefore **the embeddable, certifiable evidence
+plane for lakehouse quality**: a library and evidence service that platforms,
+consultancies, and data teams embed in their own jobs and gate their own
+promotions with — and whose evidence a dashboard can later render.
+
+== MVP definition
+
+[cols="1,3,2",options="header"]
+|===
+|Slice |Contents |Route to revenue
+
+|MVP-0 (shipped)
+|Kernel (counts/v1, groups/v1, ranges/v1), native Spark adapter with
+differential certification, translation for six legacy constraints, file and
+catalog sinks, identifier hardening, 469-test certified suite.
+|Open-source library: PyPI distribution, community adoption, credibility.
+
+|MVP-1 (evidence plane)
+|PostgreSQL sink rollout (ADR-006), `dq-report/v1` evidence documents bound
+to runs, admission/promotion query surface (`runs`/`artifacts`), retention
+policies, alerting notifier port (webhook/e-mail on gate events), SBOM and
+signed releases.
+|Listed add-on for regulated lakehouse teams; the co-design substrate for
+the consumer's admission gates.
+
+|MVP-2 (marketplace offer)
+|Multi-tenant control plane (namespaces, API keys, retention), Databricks
+partner listing and AWS Marketplace SaaS offer (metering via the marketplace
+metering service, Entra ID/IdC integration), packaged connection guides for
+Lakehouse Monitoring and Glue DQ coexistence, support SLAs.
+|Marketplace transactable offers with cloud-marketplace billing.
+|===
+
+== Gap analysis versus marketplace MVP
+
+[cols="2,1,2",options="header"]
+|===
+|Capability |Today |Gap to close
+|Rule kernel + certification |Shipped, differentially certified |Keep; extend parity set (uniqueness, patterns) incrementally
+|Evidence durability |PostgreSQL sink port (ADR-006) |Rollout DDL, retention, admission query views
+|Alerting / incidents |Not started |Notifier port on gate events; incident records in the evidence store (TD-PROD-2)
+|Anomaly detection |Not started |Explicitly out of kernel; optional policy pack later (TD-PROD-3)
+|Multi-tenancy |Single-tenant by design |Namespaces, API keys, RBAC on the evidence plane (TD-PROD-4)
+|Packaging / marketplace ops |PyPI source, unsigned |Signed wheels, SBOM, container image, listing assets, security review pack (TD-PROD-1)
+|Docs / UX |ADRs + operator reference |Quickstart, guided config UX, error-message catalog (TD-PROD-5)
+|===
+
+== Co-design principles
+
+* Consumers co-design the *query surface* (runs/artifacts views, admission
+  predicates), not the engine internals.
+* Operators co-design *deployment* (schema provisioning, retention, DSN
+  handling) — the framework never owns credentials or drivers.
+* Engine authors get one port (`OutcomeSink`, `DQEngine`) — extension
+  compatibility stays explicit per ADR-003.
+* Every revenue feature lands as a kernel-or-sink capability first, UI later:
+  the library remains the product; the marketplace offers are packaging.
