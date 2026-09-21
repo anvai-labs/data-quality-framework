@@ -290,3 +290,6 @@ def test_unique_constraint_composite_key_multiple_check_mode_failure(spark):
     assert False == process_schemavalidation_failure(
         spark, df, schema_config
     ), "Atleast one metric should have failed."
+
+
+pytestmark = pytest.mark.spark

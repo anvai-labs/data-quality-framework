@@ -141,7 +141,8 @@ supported engine capability.
 tests repeat manual success loops and diagnostic printing.
 |Constraint strategy objects, shared outcome assertions/fixtures, and focused unit versus
 Spark integration markers. *Constraint strategy objects implemented 2026-09-20 for the
-custom engine (ADR-003); shared fixtures and markers remain U7.*
+custom engine (ADR-003); shared assertions, unit/spark markers, and the lazy test
+session implemented 2026-09-21 (U7).*
 
 |TD-ARCH-10
 |P1
@@ -312,10 +313,16 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   unconditional `coalesce(1)` is gone - file and table writes now preserve
   Spark's own partitioning. Storage tuning belongs to deployment
   configuration; the PostgreSQL sink remains proposed under ADR-002.
-* U7: planned. ADR-002 extends U3 with portable rule/metric models; the
-  groups/v1 kernel, native Spark execution, and DistinctnessByGroup translation
-  landed under ADR-004. Test consolidation follows as a separate change. No
-  backend migration is enabled by this dependency upgrade.
+* U7: implemented. Shared outcome assertions live in `dq.tests.helpers`; the
+  repeated manual success loops and duplicated helpers/fixtures are gone; every
+  test module is marked `unit` or `spark` (the conftest auto-marks unmarked
+  tests as unit and builds its Spark session lazily, so `pytest -m "not spark"`
+  runs the portable and pure suites without a JVM); and example scripts carry
+  compile-plus-execution contracts. Extension compatibility is explicit in
+  ADR-003 and the operator reference.
+* Beyond U7: the PostgreSQL durable sink remains proposed under ADR-002, and
+  groups/v2 may make the empty-input vacuous pass configurable. No backend
+  migration is enabled by this dependency upgrade.
 
 U3a limits are 10,000 outcomes, 1 MiB per encoded outcome, 16 MiB across one batch/run,
 10,000 diagnostic nodes per outcome, and nesting depth 16. Limits reject rather than truncate.

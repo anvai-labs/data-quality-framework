@@ -178,3 +178,6 @@ class _FakeSpark:
     def createDataFrame(self, rows, _columns):
         self.rows = rows
         return self.frame
+
+
+pytestmark = pytest.mark.spark

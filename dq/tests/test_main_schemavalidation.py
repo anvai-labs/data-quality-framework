@@ -468,3 +468,6 @@ def test_nullable_false_schemavalidation_single_check_failure(spark):
     if overallsuccess:
         print(json.dumps(summarymetrics, indent=2))
     assert False == overallsuccess, f"atleast one metric should have failed"
+
+
+pytestmark = pytest.mark.spark

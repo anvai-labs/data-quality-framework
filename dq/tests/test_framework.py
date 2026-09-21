@@ -59,3 +59,6 @@ def test_framework_failure(spark, sample_dataframe_with_failure, framework_confi
         if not (metric["success"]):
             overallsuccess = False
     assert overallsuccess == False, "Error: All checks should not have passed"
+
+
+pytestmark = pytest.mark.spark

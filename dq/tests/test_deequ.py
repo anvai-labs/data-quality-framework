@@ -168,3 +168,6 @@ def test_multi_check_deequ_engine_failure(
             overallsuccess = False
 
     assert False == overallsuccess, "Atleast one metric should have failed."
+
+
+pytestmark = pytest.mark.spark

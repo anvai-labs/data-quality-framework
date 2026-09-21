@@ -76,3 +76,6 @@ def test_schemavalidation_without_nullvalue_and_enabled_notnull_success(spark):
             overallsuccess = False
 
     assert True == overallsuccess
+
+
+pytestmark = pytest.mark.spark

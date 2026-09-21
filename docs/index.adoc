@@ -65,6 +65,19 @@ class DQEngine(ABC):
         ...
 ----
 
+Extension compatibility is explicit:
+
+* `repository` receives the framework's outcome sink (an `OutcomeSink` from
+  `dq.sinks`), not raw storage configuration. Engines hand their bounded
+  artifacts to the sink; they must not write to files, tables, or catalogs
+  themselves.
+* Catalog and SQL identifiers must parse through `dq.identifiers`
+  (`TableName`, `ColumnName`) so malformed or injected names fail before any
+  Spark call.
+* The custom constraint surface is frozen by ADR-003: its canonical names are
+  permanent contracts, and new constraints require kernel-backed semantics
+  first.
+
 == Configuration loading
 
 `DQFramework(spark, config, default_dataframe=None)` accepts:

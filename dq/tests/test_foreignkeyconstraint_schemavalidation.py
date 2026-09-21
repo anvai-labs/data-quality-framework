@@ -257,3 +257,6 @@ def test_schemavalidation_fk_use_list_check_false_multiple_check_mode_failure(
         df_long_incoming,
         list_check_false_multiple_check_mode_schemavalidation_config,
     ), "Atleast one metric should have failed."
+
+
+pytestmark = pytest.mark.spark

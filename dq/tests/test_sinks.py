@@ -211,3 +211,6 @@ def test_repository_sink_catalog_table_lane_creates_then_appends(spark, tmp_path
     table = spark.read.table("dw_u6.reposink_metrics")
     assert table.count() == 2, "create on first write, append on the second"
     assert table.filter(table["dqts"] == 1700000001000).count() == 1
+
+
+pytestmark = pytest.mark.spark

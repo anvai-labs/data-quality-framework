@@ -26,6 +26,7 @@ from dq.plan import (
     SEMANTIC_GROUPS_VERSION,
 )
 from dq.spark_adapter import GROUP_CAPABILITIES, execute_plan
+from dq.tests.helpers import legacy_by_rule
 
 pytestmark = pytest.mark.spark
 
@@ -67,13 +68,6 @@ def bound_rules(group_by=(ColumnRef("region"),), column="id"):
             target=MetricKind.GROUP_MAX_DISTINCT,
         ),
     )
-
-
-def legacy_by_rule(outcomes):
-    return {
-        outcome.to_legacy()["details"]["rule_id"]: outcome.to_legacy()
-        for outcome in outcomes
-    }
 
 
 def test_capabilities_split_by_semantic_version():

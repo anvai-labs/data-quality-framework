@@ -36,6 +36,7 @@ from dq.plan import (
     SEMANTICS_VERSION,
 )
 from dq.spark_adapter import ADAPTER_NAME, ADAPTER_VERSION, CAPABILITIES, execute_plan
+from dq.tests.helpers import legacy_by_rule
 
 pytestmark = pytest.mark.spark
 
@@ -104,13 +105,6 @@ def expected_fixture_outcomes():
         "note_string_nan_present": (True, PRESENT_COUNTS["note"], ROW_COUNT),
         "tag_under_seventy": (True, PRESENT_COUNTS["tag"], ROW_COUNT),
         "amount_decimal_complete": (True, PRESENT_COUNTS["amount"], ROW_COUNT),
-    }
-
-
-def legacy_by_rule(outcomes):
-    return {
-        outcome.to_legacy()["details"]["rule_id"]: outcome.to_legacy()
-        for outcome in outcomes
     }
 
 

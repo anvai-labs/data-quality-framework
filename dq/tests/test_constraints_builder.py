@@ -72,3 +72,6 @@ def test_build_constraints(spark, sample_dataframe):
         spark, sample_dataframe, constraints
     )
     assert checked_constraints.count() == len(constraints["constraint_suggestions"])
+
+
+pytestmark = pytest.mark.spark

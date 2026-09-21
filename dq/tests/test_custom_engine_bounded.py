@@ -26,6 +26,7 @@ from dq.engine.custom.strategies import (
     GroupedDistinctBoundsStrategy,
 )
 from dq.exceptions import ConfigurationError
+from dq.tests.helpers import summaries_by_instance
 
 _GROUPS_DATA = [
     ("east", "a", 1.0),
@@ -132,10 +133,6 @@ def lookup_config(ref_table, ref_columns="item_id", ignore_columns=None):
     }}
     """
     return ConfigFactory.parse_string(config).get("sync", {})
-
-
-def summaries_by_instance(results):
-    return {result["details"]["instance"]: result for result in results}
 
 
 def test_distinctness_emits_one_bounded_summary_per_column(spark):
@@ -456,3 +453,6 @@ def test_negative_values_constraint_reports_failing_and_non_numeric_columns(spar
     assert (
         by_instance["WideTablesNegativeValuesCheck for label "]["success"] is True
     ), "string columns cannot hold negative values and count as passing"
+
+
+pytestmark = pytest.mark.spark

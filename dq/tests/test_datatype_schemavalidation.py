@@ -576,3 +576,6 @@ def test_schemavalidation_single_check_mode_false_booleanType_success(spark):
             overallsuccess = False
 
     assert True == overallsuccess, "Atleast one metric failed."
+
+
+pytestmark = pytest.mark.spark

@@ -1,20 +1,34 @@
 # Copyright 2024 Data Quality Framework Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
 import os
 import sys
+
+import pytest
 from pyhocon import ConfigFactory
 
 os.environ["SPARK_VERSION"] = "3.5"
-os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
-os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
-import pydeequ
-from pyspark.sql import SparkSession
+
+
+def pytest_collection_modifyitems(config, items):
+    """Mark every test without an explicit marker as a unit test.
+
+    Spark-marked modules declare ``pytestmark = pytest.mark.spark`` and are
+    the only tests that require a JVM; ``pytest -m "not spark"`` therefore
+    runs the portable and pure suites without launching one.
+    """
+    for item in items:
+        if "spark" not in item.keywords:
+            item.add_marker(pytest.mark.unit)
 
 
 @pytest.fixture(scope="session")
 def spark():
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+    import pydeequ
+    from pyspark.sql import SparkSession
+
     jars = "lib/deequ-2.0.21-spark-3.5.jar,lib/dqdl-1.0.0.jar"
     spark = (
         SparkSession.builder.master("local")

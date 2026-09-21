@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Consolidated test helpers into `dq.tests.helpers`, marked every module
+  `unit` or `spark` (the test session builds Spark lazily, so
+  `pytest -m "not spark"` runs the pure suites without a JVM), removed
+  duplicated fixtures, and added executable-example contracts that compile
+  every example script and run the portable demonstration from a source
+  checkout (TD-ARCH-9, U7)
+
 - Centralized table, column, and catalog identifiers into validated value objects
   (`dq.identifiers`) used at every catalog and SQL boundary; malformed or injected
   identifiers fail closed before any Spark call, and Unity catalog SQL statements
