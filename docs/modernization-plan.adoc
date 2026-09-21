@@ -101,7 +101,8 @@ serializer. Unknown/ambiguous outcomes fail at the engine boundary.
 |`CustomEngine` collects full rate-of-change and grouped result datasets to the driver,
 performs an extra count for logging, and can divide by zero.
 |Distributed window/aggregation expressions that collect only bounded check summaries;
-property and scale fixtures prove equivalence and memory shape.
+property and scale fixtures prove equivalence and memory shape. *Implemented 2026-09-20;
+scheduled scale benchmarks remain manual.*
 
 |TD-ARCH-5
 |P1
@@ -136,7 +137,8 @@ supported engine capability.
 |Large schema/custom check classes mix rule parsing, Spark planning, execution, and formatting;
 tests repeat manual success loops and diagnostic printing.
 |Constraint strategy objects, shared outcome assertions/fixtures, and focused unit versus
-Spark integration markers.
+Spark integration markers. *Constraint strategy objects implemented 2026-09-20 for the
+custom engine (ADR-003); shared fixtures and markers remain U7.*
 
 |TD-ARCH-10
 |P1
@@ -273,14 +275,34 @@ raising the repository-wide percentage is not a substitute for boundary and nega
   portable kernel. Direct engine calls still return legacy dictionaries; the facade/report
   enforce the new boundary. Great Expectations runtime compatibility is not certified by
   the current Spark suite; its existing integration tests are disabled.
-* U4-U7: planned. ADR-002 extends U3 with portable rule/metric models; native Spark
-  uniqueness/range parity and Arrow/DataFusion follow as separate changes after the
-  count adapter lands. No backend migration is enabled by this dependency upgrade.
+* U5: implemented for the custom engine. `DistinctnessByGroup` reduces per-group
+  distinct counts to one bounded summary per column (observed range plus violation
+  count), `RateOfChange` computes consecutive-pair changes with a distributed lag
+  window and one aggregate per column, and `LookupBasedOnColumnNameList` matches
+  schema-sized column names through a left-semi join instead of collecting the
+  reference table. The driver never receives per-group or per-row dataset content,
+  the logging-only `count()` action is gone, and zero or null baselines are reported
+  as skipped pairs instead of crashing the run. Per-group and per-row verification
+  granularity is intentionally replaced by per-column summaries with aggregate
+  diagnostics; empty-input outcomes ("No suitable data", value 1 for distinctness,
+  value 0 for rate of change) and all metric/verification string shapes are
+  preserved. Local validation: 305 full-suite tests passed on Python 3.13; changed
+  lines in the custom engine exceed the 90 percent diff-cover gate. Scheduled scale
+  benchmarks remain manual per the CI cost policy. The engine is now four stateless
+  strategy objects behind the `CustomEngine` facade with reference identifiers validated
+  before SQL, and its constraint surface is frozen as a first-class adapter contract
+  (ADR-003).
+* U4, U6, U7: planned. ADR-002 extends U3 with portable rule/metric models; the
+  groups/v1 kernel, native Spark execution, and DistinctnessByGroup translation
+  landed under ADR-004. Centralized identifiers (U4), outcome sinks (U6), and
+  test consolidation (U7) follow as separate changes. No backend migration is
+  enabled by this dependency upgrade.
 
 U3a limits are 10,000 outcomes, 1 MiB per encoded outcome, 16 MiB across one batch/run,
 10,000 diagnostic nodes per outcome, and nesting depth 16. Limits reject rather than truncate.
 They bound the evidence boundary, not upstream Spark collection: custom-engine raw-row
-collection remains TD-ARCH-4/U5. Engine-owned persistence still happens before boundary
+collection was TD-ARCH-4/U5 and now returns bounded per-column summaries. Engine-owned
+persistence still happens before boundary
 validation and is not promotion-grade admission evidence; U6 moves persistence behind the
 validated result contract.
 

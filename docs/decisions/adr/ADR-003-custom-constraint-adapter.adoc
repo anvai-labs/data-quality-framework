@@ -1,0 +1,100 @@
+= ADR-003: Retain the custom constraint engine as a first-class domain adapter
+:toc:
+:sectlinks:
+
+Status: Accepted +
+Date: 2026-09-20
+
+== Context
+
+The custom engine provides four named constraints that no generic engine in this
+framework can express: ``DistinctnessByGroup`` (grouped distinct counts with
+thresholds), ``RateOfChange`` (percent change between consecutive ordered rows),
+``LookupBasedOnColumnNameList`` (schema names checked against a reference table's
+values), and ``WideTablesNegativeValuesCheck`` (negative counts across every
+column of a wide table). Deequ, Great Expectations, and DQDL are flat-column
+assertion DSLs: none has grouped assertions, window semantics, or
+schema-versus-table lookups. ADR-002 classifies ordered checks as their own
+semantic category and deliberately excludes raw SQL expressions from the portable
+kernel, so "rewrite the rules for another engine" is not available for these
+semantics.
+
+Downstream rule packs depend on the engine's configuration surface
+(``engine = "custom"``, the four constraint names, and their fields) and on the
+exact metric/verification row shapes. The engine is therefore a compatibility
+contract, not internal detail.
+
+Historically the engine was also the framework's worst driver-memory offender
+(TD-ARCH-4, addressed by U5: bounded per-column summaries through distributed
+aggregations) and mixed rule parsing, execution, and formatting in one class
+(TD-ARCH-9).
+
+== Decision
+
+Retain the custom engine permanently as a first-class domain-constraint adapter,
+with a frozen external contract and evolvable internals.
+
+* The configuration surface is frozen: the four constraint names, their fields,
+  the ``MultiColumn`` metric entity, and the metric/verification row layouts are
+  permanent contracts. New constraints are not added to this engine unless they
+  are backed by portable kernel semantics (ADR-002) first.
+* Internals migrate to the engine-neutral kernel as rule kinds land, while the
+  HOCON surface and result shapes stay identical:
+  ** ``WideTablesNegativeValuesCheck`` maps onto portable numeric-range rules
+     (first parity set in ADR-002) once range rules exist.
+  ** ``DistinctnessByGroup`` maps onto the uniqueness family after the kernel
+     gains a group dimension on ``MetricKey`` (grouped metric requests).
+  ** ``RateOfChange`` stays adapter-specific until the kernel defines an
+     ordered-check contract; it is the one constraint with no portable path
+     today.
+  ** ``LookupBasedOnColumnNameList`` is re-evaluated under U4's centralized
+     identifier and catalog resolution; it is a schema-contract check more than
+     a data-quality rule.
+* Internally the engine is four stateless strategy objects behind the
+  ``CustomEngine`` facade. The facade extracts configuration and dispatches;
+  strategies own Spark planning and return bounded legacy-shaped rows. The
+  strategy interface is the only sanctioned place for constraint logic in this
+  engine.
+* Reference-table identifiers are validated against the bounded identifier
+  shape before any Spark SQL is built (fail closed). U4 replaces this local
+  pattern with the one centralized identifier value object.
+
+== Consequences
+
+Existing and future rule packs (including external consumers) keep working
+unchanged; removing or renaming a custom constraint now requires an ADR and a
+consumer migration plan. Testing investment concentrates on the strategy
+contracts, which are permanent. The kernel's grouped-uniqueness extension is the
+main design prerequisite for shrinking the engine's internals, and the engine
+remains the reference point for what bounded-summary compatibility looks like
+for other engines that cannot move to the kernel.
+
+== Amendment 2026-09-20: canonical constraint names
+
+The owner directed renaming the constraints to semantically apt names. The
+freeze is amended, not lifted. The canonical names are:
+
+* ``GroupedDistinctBounds`` (was ``DistinctnessByGroup``)
+* ``ConsecutivePercentChange`` (was ``RateOfChange``)
+* ``ColumnNamesInReferenceTable`` (was ``LookupBasedOnColumnNameList``)
+* ``NoNegativeValues`` (was ``WideTablesNegativeValuesCheck``)
+
+The legacy names remain accepted aliases that must keep producing
+byte-identical metric and verification rows, including their historical
+instance strings, so existing rule packs (including external consumers) are
+unaffected. New configurations should use the canonical names; the engine logs
+a deprecation warning when an alias is used. Removing an alias requires an
+ADR and a consumer migration plan.
+
+We deliberately do not port these constraints to Great Expectations or DQDL
+(their vocabularies cannot express them), and we do not add a generic SQL rule
+type anywhere in the framework, because executable strings in configuration are
+the failure mode ADR-002 exists to prevent.
+
+== Acceptance gates
+
+* Strategy refactors preserve metric and verification row shapes exactly;
+  fixtures pin empty-input, zero-denominator, and bounded-summary behavior.
+* Every strategy decides through distributed aggregations; the driver receives
+  only per-column summaries and schema-sized lookups.
+* Identifier validation rejects malformed reference names before execution.

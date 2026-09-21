@@ -329,8 +329,6 @@ self-hosted capacity. Other pull requests stay on GitHub-hosted runners.
 * link:decisions/adr/ADR-002-engine-neutral-rule-kernel.adoc[ADR-002: engine-neutral rule kernel]
 * link:decisions/adr/ADR-003-custom-constraint-adapter.adoc[ADR-003: custom constraint adapter]
 * link:decisions/adr/ADR-004-grouped-metric-requests.adoc[ADR-004: grouped metric requests]
-* link:decisions/adr/ADR-003-custom-constraint-adapter.adoc[ADR-003: custom constraint adapter]
-* link:decisions/adr/ADR-004-grouped-metric-requests.adoc[ADR-004: grouped metric requests]
 * link:technical-debt-analysis.adoc[Historical technical-debt analysis]
 * link:architecture-improvements.adoc[Architecture planning record]
 * link:performance-optimization.adoc[Performance ideas]

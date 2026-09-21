@@ -47,11 +47,11 @@ def multi_column_dataframe(spark):
     data = [
         (
             "2024-10-23",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "B",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c3",
+            "t1",
             0.25,
             0.40319,
             0.50663,
@@ -66,11 +66,11 @@ def multi_column_dataframe(spark):
         ),
         (
             "2024-10-24",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "A",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c1",
+            "t1",
             0.25,
             0.06611,
             0.47947,
@@ -85,11 +85,11 @@ def multi_column_dataframe(spark):
         ),
         (
             "2024-10-25",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "BB",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c2",
+            "t1",
             0.4,
             0.55653,
             0.22908,
@@ -104,23 +104,23 @@ def multi_column_dataframe(spark):
         ),
     ]
     columns = [
-        "Date",
-        "Batch",
-        "Region",
-        "Sectors",
-        "AvRating",
-        "Tier",
-        "Recovery",
-        "Metric6M",
-        "Metric1Y",
-        "Metric2Y",
-        "Metric3Y",
-        "Metric5Y",
-        "Metric7Y",
-        "Metric10Y",
-        "Metric15Y",
-        "Metric20Y",
-        "Metric30Y",
+        "record_date",
+        "batch_id",
+        "region_id",
+        "sector_id",
+        "class_id",
+        "tier_id",
+        "measure_01",
+        "measure_02",
+        "measure_03",
+        "measure_04",
+        "measure_05",
+        "measure_06",
+        "measure_07",
+        "measure_08",
+        "measure_09",
+        "measure_10",
+        "measure_11",
     ]
 
     return spark.createDataFrame(data, columns)
@@ -168,17 +168,17 @@ def custom_config_rate_of_change():
         {
             constraint_name = "rate_of_change_check"
             constraint = "RateOfChange"
-            columns = ["Recovery", "Metric6M", "Metric1Y", "Metric2Y", "Metric3Y", "Metric5Y", "Metric7Y", "Metric10Y", "Metric15Y", "Metric20Y", "Metric30Y"]
-            group_by = ["Batch", "Region", "Sectors", "AvRating", "Tier"]
-            sort_by = "Date"
+            columns = ["measure_01", "measure_02", "measure_03", "measure_04", "measure_05", "measure_06", "measure_07", "measure_08", "measure_09", "measure_10", "measure_11"]
+            group_by = ["batch_id", "region_id", "sector_id", "class_id", "tier_id"]
+            sort_by = "record_date"
             max =  20
             level = "Error"
         },
         {
             constraint_name = "stale_value_check"
             constraint = "DistinctnessByGroup"
-            columns = [ "Metric6M", "Metric1Y", "Metric2Y", "Metric3Y", "Metric5Y", "Metric7Y", "Metric10Y", "Metric15Y", "Metric20Y", "Metric30Y"]
-            group_by = ["Batch", "Region", "Sectors", "AvRating", "Tier"]
+            columns = [ "measure_02", "measure_03", "measure_04", "measure_05", "measure_06", "measure_07", "measure_08", "measure_09", "measure_10", "measure_11"]
+            group_by = ["batch_id", "region_id", "sector_id", "class_id", "tier_id"]
             min =  2
             level = "Error"
         }
@@ -198,7 +198,7 @@ def custom_config_lookup_based_column():
         {
             constraint_name = "ref_table_lookup"
             constraint = "LookupBasedOnColumnNameList"
-            ignore_columns = ["Date", "u", "source"]
+            ignore_columns = ["record_date", "u", "source"]
             ref_table = "ref_db.lookup_table"
             ref_columns ="item_id"
             level = "Warning"
@@ -219,7 +219,7 @@ def custom_config_wide_col_negative_values():
         {
             constraint_name = "Negative_values"
             constraint = "WideTablesNegativeValuesCheck"
-            ignore_columns = ["Date", "u", "source"]
+            ignore_columns = ["record_date", "u", "source"]
             level = "Warning"
         }
         ]
@@ -255,11 +255,11 @@ def multi_column_dataframe_rate_of_change(spark):
     data = [
         (
             "2024-10-23",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "B",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c3",
+            "t1",
             0.25,
             0.40319,
             0.50663,
@@ -274,11 +274,11 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
         (
             "2024-10-24",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "B",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c3",
+            "t1",
             0.35,
             0.06611,
             0.47947,
@@ -293,11 +293,11 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
         (
             "2024-10-25",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "B",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c3",
+            "t1",
             0.90,
             0.55653,
             0.22908,
@@ -312,11 +312,11 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
         (
             "2024-10-23",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "BB",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c2",
+            "t1",
             0.25,
             0.10319,
             0.50663,
@@ -331,11 +331,11 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
         (
             "2024-10-24",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "BB",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c2",
+            "t1",
             0.25,
             0.001611,
             0.47947,
@@ -350,11 +350,11 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
         (
             "2024-10-25",
-            "Batch_1",
-            "Region_A",
-            "Sector_1",
-            "BB",
-            "Tier_1",
+            "b1",
+            "r1",
+            "s1",
+            "c2",
+            "t1",
             0.4,
             0.99653,
             0.22908,
@@ -369,23 +369,23 @@ def multi_column_dataframe_rate_of_change(spark):
         ),
     ]
     columns = [
-        "Date",
-        "Batch",
-        "Region",
-        "Sectors",
-        "AvRating",
-        "Tier",
-        "Recovery",
-        "Metric6M",
-        "Metric1Y",
-        "Metric2Y",
-        "Metric3Y",
-        "Metric5Y",
-        "Metric7Y",
-        "Metric10Y",
-        "Metric15Y",
-        "Metric20Y",
-        "Metric30Y",
+        "record_date",
+        "batch_id",
+        "region_id",
+        "sector_id",
+        "class_id",
+        "tier_id",
+        "measure_01",
+        "measure_02",
+        "measure_03",
+        "measure_04",
+        "measure_05",
+        "measure_06",
+        "measure_07",
+        "measure_08",
+        "measure_09",
+        "measure_10",
+        "measure_11",
     ]
 
     return spark.createDataFrame(data, columns)
