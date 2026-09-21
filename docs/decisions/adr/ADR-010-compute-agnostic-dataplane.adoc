@@ -1,0 +1,74 @@
+= ADR-010: Compute-agnostic data plane — SQLAlchemy sink and Arrow-native engine
+:toc:
+:sectlinks.
+
+Status: Proposed (SPEC-007 buildable; Arrow-native engine is a gated
+follow-up) +
+Date: 2026-09-21
+
+== Context
+
+Two directives converge. First, the PostgreSQL sink should generalize to
+RDBMS broadly (SQLAlchemy Core) and gain an Arrow-based fast path.
+Second, the Deequ dependency should be re-engineered — clone-and-upgrade if
+the license permits, otherwise build an analogous Arrow-native library that
+runs transparently across DataFusion, Spark, Polars, and LanceDB.
+
+License verdict (verified 2026-09-21): Deequ is Apache-2.0. A clone,
+modification, and redistribution is legally permitted with attribution and
+change notes. The obstacle is not legal — it is maintenance: Deequ is a
+JVM/Scala library bound to Spark's API; AWS's release cadence has trailed
+Spark versions (this framework pins a newer artifact than Maven Central's
+latest), and a fork commits us to maintaining a large Scala surface — the
+exact burden ADR-002 exists to avoid. A Scala fork also cannot reach
+DataFusion, Polars, or LanceDB: Deequ is structurally Spark-bound.
+
+== Decision
+
+* *SQLAlchemy sink generalization (SPEC-007, build now)*: the durable
+  sink's SQL layer moves to SQLAlchemy Core with an injected `Engine` or
+  `Connection`. Dialect quoting, batching, and driver handling pass to
+  SQLAlchemy — one implementation on PostgreSQL today, other RDBMSs
+  inherited without new code. Optional pyarrow is the batch-insert fast
+  path where the driver supports it.
+* *Arrow-native evaluation engine (gated follow-up)*: an analogous engine to
+  Deequ built on Arrow compute (pyarrow; DataFusion optional), living behind
+  this framework's semantic versions. It evaluates counts/v1, groups/v1, and
+  ranges/v1 plans over Arrow tables and record batches, held to the same
+  differential gates as the Spark adapter. Arrow is the interchange
+  standard, so the same engine runs transparently against DataFusion,
+  Polars, and LanceDB datasets (all Arrow-native or Arrow-exporting); Spark
+  enters through the existing adapter.
+* *Deequ stance*: no fork. The legacy deequ engine path keeps the pinned
+  2.0.21 artifact while it serves; Deequ-equivalent capability is rebuilt
+  Arrow-native where the parity gates pass; Deequ remains an optional
+  compatibility engine afterwards.
+
+== Consequences
+
+One SQL dialect surface replaces raw PG strings; the Arrow fast path adds
+throughput without abandoning correctness gates; the framework reaches
+Polars/LanceDB/DataFusion estates with no Spark cluster. Costs: optional
+`sqlalchemy` and `pyarrow` dependencies, a second adapter to keep
+differentially certified, and the discipline to keep every new engine
+behind the kernel's semantic versions rather than growing engine-specific
+rule vocabularies.
+
+== Rejected alternatives
+
+* Forking Deequ: legally permitted (Apache-2.0) but strategically rejected —
+  a Scala maintenance surface, Spark-bound by construction, and duplicated
+  capability with the kernel.
+* Building a dashboard/observability platform: a different company; the
+  certifiable engine and evidence plane are the defensible layer (ADR-007).
+* Embedding engine-specific rule vocabularies in the kernel: breaks semantic
+  versioning and the certification model.
+
+== Acceptance gates
+
+* SPEC-007 contracts: injected SQLAlchemy engine, quoted DDL, executemany
+  insert, Arrow fast path with parameterized fallback, fake-engine tests.
+* The Arrow-native engine lands only with differential equivalence over the
+  shared fixtures (same bar as the Spark adapter — ADR-005/006 pattern).
+* No new mandatory dependency: SQLAlchemy and pyarrow remain optional
+  extras; the OSS package imports neither at framework import time.

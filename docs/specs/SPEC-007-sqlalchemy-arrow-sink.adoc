@@ -1,0 +1,44 @@
+= SPEC-007: SQLAlchemy Core sink and Arrow fast path
+:toc:
+:sectlinks.
+
+Status: Draft for review +
+Date: 2026-09-21 +
+Driven by: ADR-010, TD-PROD-1
+
+== Purpose
+
+Generalize the durable sink from PostgreSQL-specific DB-API to SQLAlchemy
+Core (any RDBMS) with an optional Arrow batch-insert fast path — injected,
+never imported by the framework.
+
+== In scope
+
+* `PostgresOutcomeSink` becomes `SqlAlchemyOutcomeSink` (Postgres alias
+  retained) constructed with an injected `sqlalchemy.Engine` or
+  `Connection`.
+* Statements move from `%s` params to SQLAlchemy `text()` with named binds;
+  identifiers use SQLAlchemy quoting where the dialect requires it —
+  validated identifiers still come from `dq.identifiers`.
+* Arrow fast path: bounded artifacts convert to a pyarrow table and insert
+  via SQLAlchemy executemany over record dicts (pyarrow optional; fallback
+  is row dicts as today).
+* Retention, prune, verify_schema, namespace scoping: semantics unchanged
+  from SPEC-001/006.
+
+== Out of scope
+
+* Other RDBMS certification lanes (Postgres remains the tested lane);
+  replacing the DB-API fake tests (they migrate to a fake SQLAlchemy
+  engine).
+
+== Acceptance gates
+
+* Contract tests with a fake SQLAlchemy engine prove: quoted DDL,
+  executemany insert shape, run-scope transaction lifecycle, namespace
+  scoping, and prune — decision-equivalent to the DB-API path.
+* A pyarrow-present test proves the Arrow conversion path; absence of
+  pyarrow falls back without error.
+* No psycopg/SQLAlchemy/pyarrow import at framework import time.
+
+Links: ADR-010; TD-PROD-1.

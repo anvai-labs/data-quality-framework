@@ -6,7 +6,7 @@ Status: Maintained by contract test (U7/TD-PROD-5) +
 Date: 2026-09-21
 
 This catalog maps every fail-closed boundary to its cause and remediation.
-The framework raises 145 raise sites across the modules below; the contract
+The framework raises 149 raise sites across the modules below; the contract
 test `dq/tests/test_error_catalog.py` keeps module coverage and exception
 types in sync with the code. Spec: SPEC-004.
 
@@ -59,12 +59,14 @@ the evidence store refused an unsafe write.
 
 == dq/postgres_sink.py
 
-*Content:* 2 `ConfigurationError` sites.
+*Content:* 4 `ConfigurationError` + 3 `RepositoryError` sites.
 
-* Cause: the PostgreSQL DSN environment variable is absent, or the dataset
-  name is missing.
-* Fix: export the DSN variable (default `DQ_POSTGRES_DSN`) and set
-  `dataset` in the repository configuration.
+* Cause: the PostgreSQL DSN environment variable is absent, the dataset
+  name is missing, retention is not explicitly configured, the evidence
+  schema is absent, or a database failure occurred during a check.
+* Fix: export the DSN variable (default `DQ_POSTGRES_DSN`), set
+  `dataset`, configure `retention_days`, and apply `ddl_statements()`
+  before querying evidence.
 
 == dq/spark_adapter.py
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import json
 
-from dq.exceptions import ConfigurationError
+from dq.exceptions import ConfigurationError, RepositoryError
 from dq.identifiers import ColumnName, TableName
 from dq.sinks import OutcomeSink, WriteResult
 
@@ -43,6 +43,8 @@ class PostgresOutcomeSink(OutcomeSink):
         schema: str = "dq",
         runs_table: str = "runs",
         artifacts_table: str = "artifacts",
+        namespace: str = "default",
+        retention_days: int | None = None,
     ):
         self._connect = connect
         self._dataset = dataset
@@ -51,6 +53,14 @@ class PostgresOutcomeSink(OutcomeSink):
         self._artifacts_table = ColumnName.parse(
             artifacts_table, label="artifacts table"
         )
+        self._namespace = ColumnName.parse(namespace, label="tenant namespace")
+        if retention_days is not None and (
+            type(retention_days) is not int or retention_days < 1
+        ):
+            raise ConfigurationError(
+                "retention_days must be a positive integer when provided"
+            )
+        self._retention_days = retention_days
         self._active = None  # (connection, cursor) while a run scope is open
 
     @classmethod
@@ -86,23 +96,147 @@ class PostgresOutcomeSink(OutcomeSink):
             schema=repoconfig.get("schema", None) or "dq",
             runs_table=repoconfig.get("runs_table", None) or "runs",
             artifacts_table=repoconfig.get("artifacts_table", None) or "artifacts",
+            namespace=repoconfig.get("namespace", None) or "default",
+            retention_days=repoconfig.get("retention_days", None),
         )
 
     def ddl_statements(self):
-        """Reference DDL for operators; provisioning belongs to deployment."""
+        """Reference DDL for operators; provisioning belongs to deployment.
+
+        Includes the tenant namespace column and the admission views
+        (SPEC-001/006): `runs_completed` and `latest_per_dataset`.
+        """
         schema = self._schema.quoted_pg
+        runs = f"{schema}.{self._runs_table.quoted_pg}"
+        artifacts = f"{schema}.{self._artifacts_table.quoted_pg}"
         return [
-            f"CREATE TABLE IF NOT EXISTS {schema}.{self._runs_table.quoted_pg} ("
-            "run_key BIGINT PRIMARY KEY, dataset TEXT NOT NULL, "
+            f"CREATE TABLE IF NOT EXISTS {runs} ("
+            "namespace TEXT NOT NULL DEFAULT 'default', "
+            "run_key BIGINT NOT NULL, dataset TEXT NOT NULL, "
             "started_millis BIGINT NOT NULL, status TEXT NOT NULL, "
-            "identity JSONB NOT NULL DEFAULT '{}'::jsonb)",
-            f"CREATE TABLE IF NOT EXISTS {schema}.{self._artifacts_table.quoted_pg} ("
-            "run_key BIGINT NOT NULL REFERENCES "
-            f"{schema}.{self._runs_table.quoted_pg}(run_key), "
-            "artifact_type TEXT NOT NULL, seq INTEGER NOT NULL, "
-            "dataset TEXT NOT NULL, payload JSONB NOT NULL, "
-            f"PRIMARY KEY (run_key, artifact_type, seq))",
+            "identity JSONB NOT NULL DEFAULT '{}'::jsonb, "
+            "PRIMARY KEY (namespace, run_key))",
+            f"CREATE TABLE IF NOT EXISTS {artifacts} ("
+            "namespace TEXT NOT NULL DEFAULT 'default', "
+            "run_key BIGINT NOT NULL, artifact_type TEXT NOT NULL, "
+            "seq INTEGER NOT NULL, dataset TEXT NOT NULL, payload JSONB NOT NULL, "
+            f"PRIMARY KEY (namespace, run_key, artifact_type, seq))",
+            f"CREATE VIEW IF NOT EXISTS {schema}.runs_completed AS "
+            f"SELECT * FROM {runs} WHERE status = 'completed'",
+            "CREATE VIEW IF NOT EXISTS "
+            f"{schema}.latest_per_dataset AS "
+            "SELECT r.* FROM (SELECT namespace, dataset, "
+            "MAX(started_millis) AS latest FROM "
+            f"{runs} WHERE status = 'completed' GROUP BY namespace, dataset) "
+            "latest JOIN "
+            f"{runs} r ON r.namespace = latest.namespace "
+            "AND r.dataset = latest.dataset "
+            "AND r.started_millis = latest.latest "
+            "WHERE r.status = 'completed'",
         ]
+
+    def verify_schema(self) -> dict:
+        """Check both evidence tables exist and return their row counts.
+
+        Fails closed with ``RepositoryError`` when the schema is absent.
+        """
+        schema = str(self._schema)
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            for table in (str(self._runs_table), str(self._artifacts_table)):
+                cursor.execute(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name = %s",
+                    (schema, table),
+                )
+                found = cursor.fetchone()
+                if not found or not found[0]:
+                    raise RepositoryError(
+                        f"evidence table {schema}.{table} does not exist; "
+                        "apply ddl_statements() first"
+                    )
+            counts = {}
+            for table in (str(self._runs_table), str(self._artifacts_table)):
+                cursor.execute(f"SELECT COUNT(*) FROM {schema}.{table}")
+                counts[table] = int(cursor.fetchone()[0])
+            return counts
+        except RepositoryError:
+            raise
+        except Exception as error:
+            raise RepositoryError(
+                f"evidence schema check failed for {schema!r}: {error}"
+            ) from error
+        finally:
+            connection.close()
+
+    def prune(
+        self,
+        before_millis: int | None = None,
+        namespace: str | None = None,
+        all_namespaces: bool = False,
+    ) -> tuple[int, int]:
+        """Delete artifacts and runs older than the cutoff.
+
+        Deleting evidence requires explicit retention configuration
+        (``retention_days``). Scope defaults to this sink's namespace;
+        pass ``all_namespaces=True`` (with ``namespace=None``) to prune
+        across namespaces. Artifacts are deleted before runs.
+
+        Returns:
+            (artifacts deleted, runs deleted).
+        """
+        if self._retention_days is None:
+            raise RepositoryError(
+                "pruning evidence requires explicit retention_days " "configuration"
+            )
+        if before_millis is None:
+            import time
+
+            before_millis = (
+                time.time_ns() // 1_000_000 - self._retention_days * 86_400_000
+            )
+        scoped = namespace is not None or not all_namespaces
+        target = str(self._namespace) if namespace is None else str(namespace)
+        connection = self._connect()
+        try:
+            cursor = connection.cursor()
+            if scoped:
+                cursor.execute(
+                    f"DELETE FROM {self._qualified_artifacts()} "
+                    "WHERE namespace = %s AND run_key IN ("
+                    f"SELECT run_key FROM {self._qualified_runs()} "
+                    "WHERE namespace = %s AND started_millis < %s)",
+                    (target, target, before_millis),
+                )
+                artifacts_deleted = cursor.rowcount
+                cursor.execute(
+                    f"DELETE FROM {self._qualified_runs()} "
+                    "WHERE namespace = %s AND started_millis < %s",
+                    (target, before_millis),
+                )
+            else:
+                cursor.execute(
+                    f"DELETE FROM {self._qualified_artifacts()} "
+                    "WHERE run_key IN ("
+                    f"SELECT run_key FROM {self._qualified_runs()} "
+                    "WHERE started_millis < %s)",
+                    (before_millis,),
+                )
+                artifacts_deleted = cursor.rowcount
+                cursor.execute(
+                    f"DELETE FROM {self._qualified_runs()} "
+                    "WHERE started_millis < %s",
+                    (before_millis,),
+                )
+            runs_deleted = cursor.rowcount
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return int(artifacts_deleted or 0), int(runs_deleted or 0)
 
     def run_scope(self, run_key: int, identity=None):
         connection = self._connect()
@@ -110,9 +244,11 @@ class PostgresOutcomeSink(OutcomeSink):
             cursor = connection.cursor()
             cursor.execute(
                 f"INSERT INTO {self._qualified_runs()} "
-                "(run_key, dataset, started_millis, status, identity) "
-                "VALUES (%s, %s, %s, %s, %s) ON CONFLICT (run_key) DO NOTHING",
+                "(namespace, run_key, dataset, started_millis, status, identity) "
+                "VALUES (%s, %s, %s, %s, %s, %s) "
+                "ON CONFLICT (namespace, run_key) DO NOTHING",
                 (
+                    str(self._namespace),
                     int(run_key),
                     self._dataset,
                     int(run_key),
@@ -169,14 +305,21 @@ class PostgresOutcomeSink(OutcomeSink):
     def _insert_artifacts(self, cursor, metric_type, key, rows):
         statement = (
             f"INSERT INTO {self._qualified_artifacts()} "
-            "(run_key, artifact_type, seq, dataset, payload) "
-            "VALUES (%s, %s, %s, %s, %s) "
-            "ON CONFLICT (run_key, artifact_type, seq) DO NOTHING"
+            "(namespace, run_key, artifact_type, seq, dataset, payload) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (namespace, run_key, artifact_type, seq) DO NOTHING"
         )
         for sequence, row in enumerate(rows):
             cursor.execute(
                 statement,
-                (int(key), metric_type, sequence, self._dataset, json.dumps(row)),
+                (
+                    str(self._namespace),
+                    int(key),
+                    metric_type,
+                    sequence,
+                    self._dataset,
+                    json.dumps(row),
+                ),
             )
 
     def _qualified_runs(self) -> str:

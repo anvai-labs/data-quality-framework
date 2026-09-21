@@ -190,6 +190,16 @@ compatibility matrix for downstream consumers.
 |Quickstart, error catalog, and a published compatibility matrix
 (ADR-007, MVP-1). Spec: SPEC-004 with the enforcing contract test.
 
+|TD-PROD-8
+|P1
+|The durable sink is PostgreSQL-specific (raw DB-API), and the Deequ
+dependency is Spark/JVM-bound with a slowed upstream cadence.
+|Generalize the sink to SQLAlchemy Core with an Arrow fast path (SPEC-007)
+and build the Arrow-native evaluation engine behind the kernel's semantic
+versions - reaching DataFusion, Polars, and LanceDB without a Spark cluster
+(ADR-010). No Deequ fork: legally permitted (Apache-2.0) but strategically
+rejected.
+
 |TD-PROD-6
 |P1
 |The open-core boundary (ADR-009) is currently enforced only by convention.
