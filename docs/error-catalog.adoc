@@ -6,7 +6,7 @@ Status: Maintained by contract test (U7/TD-PROD-5) +
 Date: 2026-09-21
 
 This catalog maps every fail-closed boundary to its cause and remediation.
-The framework raises 154 raise sites across the modules below; the contract
+The framework raises 157 raise sites across the modules below; the contract
 test `dq/tests/test_error_catalog.py` keeps module coverage and exception
 types in sync with the code. Spec: SPEC-004.
 
@@ -16,6 +16,16 @@ Every error derives from `DQFrameworkError`. `ConfigurationError` and
 bug"; `ValueError` marks legacy engine boundaries; `DataFrameNotFoundError`
 means the referenced table could not be resolved; `RepositoryError` means
 the evidence store refused an unsafe write.
+
+== dq/notifier.py
+
+*Content:* 3 `ConfigurationError` sites.
+
+* Cause: webhook notifier missing a `url_env` key naming the environment
+  variable that holds the webhook URL, or the environment variable is
+  absent at construction time.
+* Fix: set the environment variable and ensure the configuration names
+  it via `url_env`.
 
 == dq/plan.py
 
