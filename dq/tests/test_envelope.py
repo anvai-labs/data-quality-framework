@@ -4,6 +4,7 @@
 """Pure contracts for the RulesetEnvelope (ADR-004/005 composition)."""
 
 from decimal import Decimal
+from fractions import Fraction
 
 import pytest
 
@@ -114,3 +115,58 @@ def test_envelope_rejects_mixed_snapshots():
 def test_envelope_rejects_non_execution_plan():
     with pytest.raises(ConfigurationError):
         RulesetEnvelope(("not a plan",))
+
+
+def test_envelope_evaluates_mixed_rulesets():
+    counts = counts_plan()
+    groups = groups_plan()
+    ranges = ranges_plan()
+    envelope = RulesetEnvelope((counts, groups, ranges))
+    caps_by_version = {
+        "counts/v1": CapabilitySet(
+            "a",
+            "1",
+            frozenset({MetricKind.ROW_COUNT, MetricKind.PRESENT_COUNT}),
+        ),
+        "groups/v1": CapabilitySet(
+            "b",
+            "1",
+            frozenset(
+                {
+                    MetricKind.GROUP_COUNT,
+                    MetricKind.GROUP_MIN_DISTINCT,
+                    MetricKind.GROUP_MAX_DISTINCT,
+                }
+            ),
+            SEMANTIC_RANGES_VERSION := "groups/v1",
+        ),
+        "ranges/v1": CapabilitySet(
+            "c",
+            "1",
+            frozenset({MetricKind.COLUMN_COUNT, MetricKind.COLUMN_MIN, MetricKind.COLUMN_MAX}),
+            "ranges/v1",
+        ),
+    }
+    # Build values for each plan's metrics
+    all_values = {}
+    for plan in envelope.plans:
+        for metric in plan.metrics:
+            if metric.semantic_version == "groups/v1":
+                if metric.kind is MetricKind.GROUP_COUNT:
+                    all_values[metric] = 3
+                elif metric.kind is MetricKind.GROUP_MIN_DISTINCT:
+                    all_values[metric] = 2
+                else:
+                    all_values[metric] = 5
+            elif metric.kind is MetricKind.ROW_COUNT:
+                all_values[metric] = 10
+            elif metric.kind is MetricKind.PRESENT_COUNT:
+                all_values[metric] = 8
+            elif metric.kind is MetricKind.COLUMN_COUNT:
+                all_values[metric] = 5
+            elif metric.kind is MetricKind.COLUMN_MIN:
+                all_values[metric] = Fraction(0)
+            elif metric.kind is MetricKind.COLUMN_MAX:
+                all_values[metric] = Fraction(100)
+    outcomes = envelope.evaluate(all_values, caps_by_version)
+    assert outcomes
